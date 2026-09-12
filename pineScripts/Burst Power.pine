@@ -1,0 +1,219 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © finallynitin
+
+//@version=5
+indicator("Burst Power", overlay=true, precision = 0)
+
+// Customisation & Table Options
+string GRP1 = "════════ Customisation ═════════"
+
+lookback_option = input.string(title="Lookback Period", defval="3 Years", options=["3 Months", "6 Months", "1 Year", "3 Years", "5 Years"], group=GRP1)
+display_mode = input.string(title="Display Mode", defval="Full", options=["Full", "Mini"], group=GRP1)
+show_latest_date = input.bool(title="Show Latest Date Column", defval=true, group=GRP1)
+toggleDarkColors = input(title="Dark Mode", defval=true, group=GRP1)
+toggleclosing = input.bool(title='', defval=false, inline = 'line 1', group=GRP1)
+closing = input.int(title='Closing within what % of highs', defval=50, options=[100, 75, 50, 25, 0], inline = 'line 1', group=GRP1, tooltip = 'Added filter to see if close is within the chosen % of the range of the day')
+
+closing_position = toggleclosing ? closing/100 : 0
+
+string GRP2 = "════════ Table ═════════"
+
+string tablesize = input.string("small", "Table", inline="21", group=GRP2, options=["tiny", "small", "normal", "large", "huge", "auto"])
+string tableposY = input.string("middle", "↕", inline="21", group=GRP2, options=["top", "middle", "bottom"])
+string tableposX = input.string("right", "↔", inline="21", group=GRP2, options=["left", "center", "right"])
+table_font_size = input.string(title="Table Header Size", defval="Small", options=["Small", "Normal", "Large"], group=GRP2)
+toggleColors = input.bool(title='Do not display colors in table?', defval=false, group=GRP2)
+
+// Map font sizes to style.size constants
+f_get_font_size(_size) =>
+    switch _size
+        "Small" => size.small
+        "Normal" => size.normal
+        "Large" => size.large
+        => size.small  // Default
+
+// Table colors
+TextColor = toggleDarkColors ? color.new(color.white, 0) : color.new(color.black, 0)
+BGColor = toggleDarkColors ? color.new(color.white, 100) : color.new(color.gray, 100)
+UpColor = toggleDarkColors ? color.new(color.lime, 40) : color.new(color.green, 90)
+DownColor = toggleDarkColors ? color.new(color.red, 40) : color.new(color.red, 90)
+FrameCol = color.new(#999999, 50)
+BorderCol = toggleDarkColors ? color.new(#999999, 50) : color.rgb(241, 241, 241)
+
+// Set text and background colors based on the selected theme
+var color textColor = toggleDarkColors ? color.white : color.black
+var color bgColor = toggleDarkColors ? color.new(color.black, 0) : color.new(color.white, 0)
+var color borderColor = toggleDarkColors ? color.white : color.black
+
+// Function to calculate cutoff timestamp based on lookback period
+f_get_cutoff_time(_lookback_option) =>
+    current_year = year(timenow)
+    current_month = month(timenow)
+    current_day = dayofmonth(timenow)
+    cutoff_year = current_year
+    cutoff_month = current_month
+    cutoff_day = current_day
+    if _lookback_option == "3 Months"
+        cutoff_month := current_month - 3
+        if cutoff_month <= 0
+            cutoff_month += 12
+            cutoff_year -= 1
+    else if _lookback_option == "6 Months"
+        cutoff_month := current_month - 6
+        if cutoff_month <= 0
+            cutoff_month += 12
+            cutoff_year -= 1
+    else if _lookback_option == "1 Year"
+        cutoff_year := current_year - 1
+    else if _lookback_option == "3 Years"
+        cutoff_year := current_year - 3
+    else if _lookback_option == "5 Years"
+        cutoff_year := current_year - 5
+    else
+        cutoff_year := current_year - 1
+    timestamp(cutoff_year, cutoff_month, cutoff_day, 0, 0)
+
+// Calculate cutoff time based on selected lookback period
+cutoff_time = f_get_cutoff_time(lookback_option)
+
+// Function to check if a value is finite
+is_finite(x) =>
+    not na(x) and math.abs(x) < 1e8  // Adjust the threshold as needed
+
+// Initialize variables
+var float max_move = na
+var int max_move_time = na
+
+var int count_5 = 0
+var int last_date_5 = na
+
+var int count_10 = 0
+var int last_date_10 = na
+
+var int count_19 = 0
+var int last_date_19 = na
+
+int new_count_5 = 0
+int new_count_10 = 0
+int new_count_19 = 0
+
+float move = na
+
+float power_value = na
+int rounded_power_value = na
+
+// Main Logic
+if time >= cutoff_time and not na(close[1]) and high != low and close[1] != 0
+    // Calculate close position within the day's range
+    close_position = (close - low) / (high - low)
+    // Check if close is in the chosen % of the day's range
+    if close_position >= closing_position
+        // Calculate the percentage change from yesterday's close to today's close
+        move := (close - close[1]) / close[1] * 100
+        // Check if move is finite
+        if is_finite(move)
+            // Update maximum move if current move is greater, or if equal, update to latest date
+            if na(max_move) or move > max_move
+                max_move := move
+                max_move_time := time
+            else if move == max_move
+                max_move_time := time  // Update to latest date
+            // Count moves in specified ranges and update latest dates
+            if move >= 5 and move < 10
+                count_5 += 1
+                last_date_5 := time
+                new_count_5 := 1
+            else if move >= 10 and move < 19
+                count_10 += 1
+                last_date_10 := time
+                new_count_10 := 1
+            else if move >= 19
+                count_19 += 1
+                last_date_19 := time
+                new_count_19 := 1
+        else
+            move := na  // Reset move if not finite
+    else
+        move := na  // Reset move if close_position condition not met
+else
+    move := na  // Reset move if conditions not met
+
+// Calculate Power Value
+power_value := ((count_5 / 5.0) + (count_10 / 2.0) + (count_19 / 0.5))
+rounded_power_value := math.round(power_value)
+
+// Plot markers only when counts increase
+plotshape(new_count_5 == 1, title="5% Move", location=location.abovebar, color=color.blue, style=shape.circle, size=size.tiny, display = display.all - display.status_line)
+plotshape(new_count_10 == 1, title="10% Move", location=location.abovebar, color=color.orange, style=shape.circle, size=size.tiny, display = display.all - display.status_line)
+plotshape(new_count_19 == 1, title="19% Move", location=location.abovebar, color=color.green, style=shape.circle, size=size.tiny, display = display.all - display.status_line)
+
+// Reset new_count variables
+new_count_5 := 0
+new_count_10 := 0
+new_count_19 := 0
+
+// Determine the number of columns and rows based on the display mode
+columns = show_latest_date ? 3 : 2
+rows = display_mode == "Full" ? 6 : 2  // 6 rows for Full, 2 rows for Mini
+
+// Create table with appropriate number of rows & columns
+var table myTable = table.new(tableposY + "_" + tableposX, columns=columns, rows=rows, bgcolor=BGColor, frame_color=FrameCol, frame_width= display_mode == "Mini" ? 0 : 1, border_color=BorderCol, border_width=display_mode == "Mini"? 0: toggleColors ? 1 : 2)
+
+
+// Display the result in a table on the last bar
+if barstate.islast and timeframe.isdaily
+    
+    if display_mode == "Full"
+        // Header
+        table.cell(myTable, 0, 0, "Move Type", text_color=textColor, bgcolor=bgColor, text_halign=text.align_center, text_size=f_get_font_size(table_font_size))
+        table.cell(myTable, 1, 0, "Count/Value", text_color=textColor, bgcolor=bgColor, text_halign=text.align_center, text_size=f_get_font_size(table_font_size))
+        if show_latest_date
+            table.cell(myTable, 2, 0, "Latest Date", text_color=textColor, bgcolor=bgColor, text_halign=text.align_center, text_size=f_get_font_size(table_font_size))
+        
+        // Row 1: Maximum Price Move (%)
+        if not na(max_move)
+            table.cell(myTable, 0, 1, "Max%", text_color=textColor, bgcolor=BGColor, text_halign=text.align_center, text_size=tablesize)
+            table.cell(myTable, 1, 1, str.tostring(max_move, "#.##") + "%", text_color=textColor, bgcolor=toggleColors ? BGColor : UpColor, text_halign=text.align_center, text_size=tablesize)
+            if show_latest_date
+                table.cell(myTable, 2, 1, str.format("{0,date,yyyy-MMM-dd}", max_move_time), text_color=textColor, bgcolor=toggleColors ? BGColor : UpColor, text_halign=text.align_center, text_size=tablesize)
+        else
+            table.cell(myTable, 0, 1, "Max%", text_color=textColor, bgcolor=BGColor, text_halign=text.align_center, text_size=tablesize)
+            table.cell(myTable, 1, 1, "nope", text_color=textColor, bgcolor=toggleColors ? BGColor : DownColor, text_halign=text.align_center, text_size=tablesize)
+            if show_latest_date
+                table.cell(myTable, 2, 1, "nope", text_color=textColor, bgcolor=BGColor, text_halign=text.align_center, text_size=tablesize)
+        
+        // Row 2: 5% Move Count
+        table.cell(myTable, 0, 2, "05% +", text_color=textColor, bgcolor=BGColor, text_halign=text.align_center, text_size=tablesize)
+        table.cell(myTable, 1, 2, str.tostring(count_5), text_color=textColor, bgcolor=toggleColors ? BGColor : count_5 == 0 ? DownColor : BGColor, text_halign=text.align_center, text_size=tablesize)
+        if show_latest_date
+            table.cell(myTable, 2, 2, last_date_5 ? str.format("{0,date,yyyy-MMM-dd}", last_date_5) : "nope", text_color=textColor, bgcolor=toggleColors ? BGColor : last_date_5 ? BGColor : DownColor, text_halign=text.align_center, text_size=tablesize)
+        
+        // Row 3: 10% Move Count
+        table.cell(myTable, 0, 3, "10% +", text_color=textColor, bgcolor=BGColor, text_halign=text.align_center, text_size=tablesize)
+        table.cell(myTable, 1, 3, str.tostring(count_10), text_color=textColor, bgcolor=toggleColors ? BGColor : count_10 == 0 ? DownColor : BGColor, text_halign=text.align_center, text_size=tablesize)
+        if show_latest_date
+            table.cell(myTable, 2, 3, last_date_10 ? str.format("{0,date,yyyy-MMM-dd}", last_date_10) : "nope", text_color=textColor, bgcolor=toggleColors ? BGColor : last_date_10 ? BGColor : DownColor, text_halign=text.align_center, text_size=tablesize)
+        
+        // Row 4: 19% Move Count
+        table.cell(myTable, 0, 4, "19% +", text_color=textColor, bgcolor=BGColor, text_halign=text.align_center, text_size=tablesize)
+        table.cell(myTable, 1, 4, str.tostring(count_19), text_color=textColor, bgcolor=toggleColors ? BGColor : count_19 == 0 ? DownColor : BGColor, text_halign=text.align_center, text_size=tablesize)
+        if show_latest_date
+            table.cell(myTable, 2, 4, last_date_19 ? str.format("{0,date,yyyy-MMM-dd}", last_date_19) : "nope", text_color=textColor, bgcolor=toggleColors ? BGColor : last_date_19 ? BGColor : DownColor, text_halign=text.align_center, text_size=tablesize)
+
+        // Row 5: Power Value
+        table.cell(myTable, 0, 5, "Burst Power", text_color=textColor, bgcolor=bgColor, text_halign=text.align_center, text_size=tablesize)
+        table.cell(myTable, 1, 5, str.tostring(rounded_power_value), text_color=textColor, bgcolor=bgColor, text_halign=text.align_center, text_size=tablesize)
+        if show_latest_date
+            table.cell(myTable, 2, 5, "●", text_color = rounded_power_value >= 15 ? color.green : rounded_power_value >= 10 and rounded_power_value < 15 ? color.orange : rounded_power_value < 10 ? color.red : TextColor, bgcolor=bgColor, text_halign=text.align_center, text_size=tablesize)
+    else if display_mode == "Mini"
+        table.cell(myTable, 0, 1, "Burst Power", text_color=textColor, bgcolor=BGColor, text_halign=text.align_center, text_size=size.small)
+        table.cell(myTable, 1, 1, str.tostring(rounded_power_value), text_color=textColor, bgcolor=BGColor, text_halign=text.align_center, text_size=size.small)
+        if show_latest_date
+            table.cell(myTable, 2, 1, "●", text_color = rounded_power_value >= 15 ? color.green : rounded_power_value >= 10 and rounded_power_value < 15 ? color.orange : rounded_power_value < 10 ? color.red : TextColor, bgcolor=BGColor, text_halign=text.align_center, text_size=size.small)
+
+else if not timeframe.isdaily
+    table.cell(myTable, 0, 0, text = "Burst Power", bgcolor = BGColor, text_color=TextColor, text_size=tablesize)
+    table.cell(myTable, 0, 2, text = "Please switch to the daily timeframe", bgcolor = BGColor, text_color=TextColor, text_size=tablesize)
+
+// Plot the Burst Power score without displaying on the chart
+plot(rounded_power_value, title="Burst Power", display=display.none)

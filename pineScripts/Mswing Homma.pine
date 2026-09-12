@@ -1,0 +1,76 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © finallynitin
+
+//@version=6
+indicator("Mswing Homma", overlay=false)
+
+toggleDarkColors = input(title = 'Dark Mode', group = 'Display Options', defval = false)
+
+// Inputs
+length1 = 20
+length2 = 50
+enable_ipo_mswing = input.bool(true, title="Enable IPO Mswing")
+ema_length = input.int(9, title="EMA Length")
+index_name = input.string("NIFTYMIDSML400", title="Custom Index Name")
+index_price = request.security(index_name, timeframe.period, close)
+hline(0, "Zero", color=color.black, linestyle=hline.style_solid)
+
+// Mswing Calculation
+f_momentum(src, len) =>
+    available_len = 0
+    for i = 0 to len
+        if not na(src[i])
+            available_len := i
+    actual_len = available_len > 0 ? available_len : len
+    (src - src[actual_len]) * 100 / src[actual_len] / actual_len
+
+// Mswing score for stock
+momo_20 = enable_ipo_mswing ? f_momentum(close, length1) : (close - close[length1]) * 100 / close[length1] / length1
+momo_50 = enable_ipo_mswing ? f_momentum(close, length2) : (close - close[length2]) * 100 / close[length2] / length2
+mswing = momo_20 + momo_50
+
+// Mswing score for custom index
+index_momo_20 = enable_ipo_mswing ? f_momentum(index_price, length1) : (index_price - index_price[length1]) * 100 / index_price[length1] / length1
+index_momo_50 = enable_ipo_mswing ? f_momentum(index_price, length2) : (index_price - index_price[length2]) * 100 / index_price[length2] / length2
+index_mswing = index_momo_20 + index_momo_50
+
+// Colors
+BGColor = toggleDarkColors ? color.new(color.white, 100) : color.new(color.gray, 100)
+HighlightColor = toggleDarkColors ? color.new(color.white, 50) : color.new(color.black, 50)
+UpColor = toggleDarkColors ? color.new(color.lime, 40) : color.new(color.green, 0)
+DownColor = toggleDarkColors ? color.new(color.red, 40) : color.new(color.red, 0)
+NeutralColor = toggleDarkColors ? color.new(color.orange, 40) : color.new(color.orange, 0)
+FrameCol = toggleDarkColors ? color.new(#999999, 50) : color.rgb(241, 241, 241)
+BorderCol = toggleDarkColors ? color.new(color.white, 100) : color.new(color.gray, 100)
+TextCol = toggleDarkColors ? color.new(color.white, 0) : color.new(color.black, 0)
+UpColor_Mswing = toggleDarkColors ? color.new(color.lime, 40) : color.new(color.green, 90)
+DownColor_Mswing = toggleDarkColors ? color.new(color.red, 40) : color.new(color.red, 90)
+NeutralColor_Mswing = toggleDarkColors ? color.new(color.orange, 40) : color.new(color.orange, 90)
+
+// Background color calculation
+mswing_color = mswing > 0 and mswing >= index_mswing ? UpColor :
+           mswing > 0 and mswing < index_mswing ? NeutralColor :
+           mswing < 0 and mswing >= index_mswing ? NeutralColor : DownColor
+
+
+bg_color = mswing > 0 and mswing >= index_mswing ? UpColor_Mswing :
+           mswing > 0 and mswing < index_mswing ? NeutralColor_Mswing :
+           mswing < 0 and mswing >= index_mswing ? NeutralColor_Mswing : DownColor_Mswing
+
+// Plot
+plot(mswing, title="Mswing Score", color = mswing_color, linewidth=2)
+mswing_ma = ta.ema(mswing, ema_length)
+plot(mswing_ma, title="Mswing EMA", color=TextCol, linewidth=1)
+
+// =============================
+// Table Options and Setup
+// =============================
+string GRP5 = 'Table Customisation'
+
+string tablesize = input.string('small', 'Table', inline = '21', group = GRP5, options = ['tiny', 'small', 'normal', 'large', 'huge', 'auto'])
+string tableposY = input.string('top', '↕', inline = '21', group = GRP5, options = ['top', 'middle', 'bottom'])
+string tableposX = input.string('right', '↔', inline = '21', group = GRP5, options = ['left', 'center', 'right'])
+
+var table mswing_table = table.new(tableposY + '_' + tableposX, columns = 5, rows = 5, bgcolor = BGColor, frame_color = FrameCol, frame_width = 0, border_color = BorderCol, border_width = 3)
+
+table.cell(mswing_table, 0, 0, text= syminfo.ticker + "  "  + str.tostring(mswing, "#.##") + " / " + str.tostring(index_mswing, "#.##") + "  "  + index_name, text_halign=text.align_center, bgcolor= bg_color, text_color=TextCol, text_size=tablesize)

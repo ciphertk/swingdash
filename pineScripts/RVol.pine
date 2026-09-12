@@ -1,0 +1,50 @@
+//@version=4
+// © ssksubam
+// Relative Volume in Percentage (%) label
+
+study("Relative Volume", "RVol", true, scale = scale.none)
+
+var string GP1 = "Input Data"
+vol_len = input(title="Relative Volume Length", defval=20, group = GP1)
+
+
+var string GP2 = "Display"
+txt_sizeopt = input(title="Text Size", defval="auto", inline = "10", options = ["auto", "tiny", "small", "normal", "large", "huge"], group = GP2)
+txt_size = (txt_sizeopt == "auto") ? size.auto : (txt_sizeopt == "tiny") ? size.tiny : (txt_sizeopt == "small") ? size.small : (txt_sizeopt == "normal") ? size.normal : (txt_sizeopt == "large") ? size.large : size.huge
+string  i_tableYpos = input("top", "Panel position", inline = "11", options = ["top", "middle", "bottom"], group = GP2)
+string  i_tableXpos = input("right", "", inline = "11", options = ["left", "center", "right"], group = GP2)
+
+var table rvolDisplay = table.new(i_tableYpos + "_" + i_tableXpos, 1, 1, border_width = 1, border_color=color.white)
+
+Round( _val, _decimals) => 
+    // Rounds _val to _decimals places.
+    _p = pow(10,_decimals)
+    round(abs(_val)*_p)/_p*sign(_val)
+
+format_text(str) =>
+    str + "\n"
+
+t = tickerid(syminfo.prefix, syminfo.ticker)
+
+    
+timeFrame = timeframe.isweekly ? "W" : timeframe.ismonthly ? "M" : "D"
+
+today_vol = security(t, timeFrame, volume)
+yday_vol = security(t, timeFrame, volume[1])
+avg_vol = security(t, timeFrame, sma(yday_vol, vol_len))
+volpct = round((today_vol / avg_vol ) * 100) 
+
+final_rvol = format_text(tostring(volpct) +"%")
+
+color_vol = (volpct <= 20) ? color.new(color.red, 0) : color.new(color.green, 0)
+
+if barstate.islast
+    // We only populate the table on the last bar.
+    table.cell(rvolDisplay, 0, 0, timeFrame+"_RVol: " + tostring(volpct) +"%", bgcolor=color_vol, text_size=txt_size)
+    
+
+showbarLine = input(false, title="Show Selected Bar RVol Line")
+bar_today_vol = volume
+bar_avg_vol = sma((volume[1]), vol_len)
+bar_volpct = round((bar_today_vol / bar_avg_vol ) * 100) 
+plot(bar_volpct, color=showbarLine ? color.red : na, linewidth=1, title="Each Bar RVol")
