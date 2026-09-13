@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+
 from textual.widgets import ContentSwitcher, Input
 
 from swingdash.ui.app import SwingDashApp
@@ -119,6 +121,50 @@ async def test_typing_in_the_filter_never_triggers_shortcuts(services, securitie
         assert len(securities_source.calls) == calls  # no second refresh
         switcher = app.query_one("#securities-switcher", ContentSwitcher)
         assert switcher.current == "securities-stocks"
+
+
+async def test_export_writes_the_active_views_filtered_sorted_rows(services):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(160, 40)) as pilot:
+        await _open_with_data(app, pilot)
+        table = _table(app)
+        await until(pilot, lambda: table.row_count == FIXTURE_STOCKS)
+
+        await pilot.press("m")  # surveillance only - the export must reflect this
+        await until(pilot, lambda: table.row_count < FIXTURE_STOCKS)
+        expected_symbols = _symbols(table)
+
+        await pilot.press("x")
+        await pilot.pause()
+
+        exports = list(services.settings.paths.exports_dir.glob("securities-stocks_*.csv"))
+        assert len(exports) == 1
+        with exports[0].open(encoding="utf-8-sig") as handle:
+            rows = list(csv.reader(handle))
+        assert rows[0] == ["SYMBOL", "NAME", "SECTOR", "MCAP CR", "BAND", "SURVEILLANCE", "LISTED"]
+        assert [r[0] for r in rows[1:]] == expected_symbols
+        raymond = next(r for r in rows[1:] if r[0] == "RAYMOND")
+        assert raymond[5] == "STASM-I"  # plain surveillance label, not the styled cell
+
+
+async def test_export_reflects_the_active_subtab(services):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(160, 40)) as pilot:
+        await _open_with_data(app, pilot)
+        await until(pilot, lambda: _table(app).row_count == FIXTURE_STOCKS)
+
+        await pilot.press("v")  # switch to Indices
+        await until(pilot, lambda: _table(app, "indices").row_count == 7)
+        await pilot.press("x")
+        await pilot.pause()
+
+        exports = list(services.settings.paths.exports_dir.glob("securities-indices_*.csv"))
+        assert len(exports) == 1
+        with exports[0].open(encoding="utf-8-sig") as handle:
+            rows = list(csv.reader(handle))
+        assert rows[0][0] == "INDEX"
+        assert len(rows) == 8  # header + 7 indices
+        assert not list(services.settings.paths.exports_dir.glob("securities-stocks_*.csv"))
 
 
 async def test_a_failed_dataset_is_reported(services, securities_source):

@@ -27,6 +27,7 @@ from swingdash.domain.rvol.calc import MODERATE_RATIO, STRONG_RATIO
 from swingdash.domain.rvol.types import Snapshot, SymbolRow
 from swingdash.domain.watchlist import Watchlist
 from swingdash.services.rvol.engine import RvolEngine
+from swingdash.ui.export import ExportTable
 from swingdash.ui.tabs.base import TabBase
 from swingdash.ui.widgets.nav_table import NavTable
 
@@ -110,6 +111,17 @@ class LiveRvolTab(TabBase):
     def on_unmount(self) -> None:
         if self._engine is not None:
             self._engine.stop()
+
+    def export_data(self) -> ExportTable | None:
+        rows = self._visible_rows()
+        keys = self._sorted_keys(rows)
+        if not keys:
+            return None
+        return ExportTable(
+            name="live-rvol",
+            headers=[header for _, _, header, _ in COLUMNS],
+            rows=[[getattr(rows[key], attr) for attr, _, _, _ in COLUMNS] for key in keys],
+        )
 
     # --- actions -------------------------------------------------------------
 

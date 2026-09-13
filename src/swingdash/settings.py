@@ -58,6 +58,10 @@ class Paths:
     def log_file(self) -> Path:
         return self.log_dir / "swingdash.log"
 
+    @property
+    def exports_dir(self) -> Path:
+        return self.data_dir / "Exports"
+
     @classmethod
     def resolve(cls, environ: Mapping[str, str]) -> Paths:
         home = environ.get(HOME_ENV)
@@ -74,7 +78,13 @@ class Paths:
         )
 
     def ensure(self) -> None:
-        for directory in (self.config_dir, self.data_dir, self.cache_dir, self.log_dir):
+        for directory in (
+            self.config_dir,
+            self.data_dir,
+            self.cache_dir,
+            self.log_dir,
+            self.exports_dir,
+        ):
             directory.mkdir(parents=True, exist_ok=True)
 
 

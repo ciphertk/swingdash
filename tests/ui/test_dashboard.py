@@ -6,6 +6,7 @@ no Upstox, a fixed Sunday clock.
 from __future__ import annotations
 
 import asyncio
+import csv
 from collections.abc import Callable
 from typing import ClassVar
 
@@ -146,6 +147,40 @@ async def test_create_a_watchlist_from_the_header_shortcut(services):
         await _until(pilot, lambda: _rvol_tab(app)._table.row_count == 3)
         assert services.watchlists.get("banks").symbols == ("SBIN", "ICICIBANK", "HDFCBANK")  # type: ignore[union-attr]
         assert app.watchlist is not None and app.watchlist.name == "banks"
+
+
+async def test_export_writes_the_current_filtered_and_sorted_rows(services, feed):
+    app = SwingDashApp(services, initial_watchlist=services.watchlists.get("default"))
+    async with app.run_test(size=(120, 30)) as pilot:
+        await _until(pilot, lambda: _rvol_tab(app)._table.row_count == 5)
+        feed.transport.tick(_key("TCS"), vtt=2_000, ltp=110.0, prev_close=100.0)
+        await _until(
+            pilot, lambda: "2.00x" in {str(c) for c in _rvol_tab(app)._table.get_row_at(0)}
+        )
+        # Narrow to one symbol - the export must reflect the filter, not the full watchlist.
+        await pilot.press("slash", *"tcs", "enter")
+        await _until(pilot, lambda: _rvol_tab(app)._table.row_count == 1)
+
+        await pilot.press("x")
+        await pilot.pause()
+
+        exports = list(services.settings.paths.exports_dir.glob("live-rvol_*.csv"))
+        assert len(exports) == 1
+        with exports[0].open(encoding="utf-8-sig") as handle:
+            rows = list(csv.reader(handle))
+        assert rows[0] == ["SYMBOL", "LTP", "CHG%", "VOLUME", "RVOL", "RVOL-D"]
+        assert len(rows) == 2  # header + the one filtered row
+        assert rows[1][0] == "TCS"
+        assert rows[1][4] == "2.0"  # rvol, raw - not the "2.00x" shown on screen
+
+
+async def test_export_notifies_when_there_is_nothing_to_export(services):
+    app = SwingDashApp(services, initial_watchlist=None)
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("x")
+        await pilot.pause()
+        assert not list(services.settings.paths.exports_dir.glob("*.csv"))
 
 
 async def test_command_palette_offers_watchlists_and_tabs(services):

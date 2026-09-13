@@ -40,6 +40,16 @@ swingdash -s RELIANCE,TCS       # ad-hoc symbols, not saved
 | `ctrl+p` | command palette (watchlists, tabs, actions) |
 | `q` | quit |
 
+Every tab (each of Securities' views included) also has:
+
+| Key | Action |
+|---|---|
+| `x` | export the current view to CSV - whatever filter and sort are applied |
+
+Exported files land in `%LOCALAPPDATA%\swingdash\Exports`, one per export,
+named after the tab/view and timestamped
+(`live-rvol_2026-09-15_103205.csv`, `securities-stocks_...csv`).
+
 **Live RVOL tab**
 
 | Key | Action |

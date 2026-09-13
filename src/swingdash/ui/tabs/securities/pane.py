@@ -25,6 +25,7 @@ from textual.widgets import ContentSwitcher, Input, Static
 from textual.widgets.data_table import ColumnKey
 
 from swingdash.domain.securities import PriceBand, SecuritiesSnapshot
+from swingdash.ui.export import ExportTable
 from swingdash.ui.tabs.base import TabBase
 from swingdash.ui.tabs.securities.views import BAND_FILTERS, VIEWS, View
 from swingdash.ui.widgets.nav_table import NavTable
@@ -103,6 +104,17 @@ class SecuritiesTab(TabBase):
         self._draw_table(snapshot)
         self._views_line.update(self._views_text(snapshot))
         self._status_line.update(self._status_text(snapshot))
+
+    def export_data(self) -> ExportTable | None:
+        view = self._view
+        ordered = self._visible_ordered(self.services.securities.snapshot())
+        if not ordered:
+            return None
+        return ExportTable(
+            name=f"securities-{view.id}",
+            headers=[column.header for column in view.columns],
+            rows=view.values(ordered),
+        )
 
     # --- actions -------------------------------------------------------------
 
@@ -187,6 +199,12 @@ class SecuritiesTab(TabBase):
     def _band(self) -> PriceBand | None:
         return BAND_FILTERS[self._band_index]
 
+    def _visible_ordered(self, snapshot: SecuritiesSnapshot) -> list[Any]:
+        """The active view's rows, filtered and sorted exactly as shown."""
+        view, state = self._view, self._state
+        rows = view.visible(snapshot, self._filter, self._band, self._flagged_only)
+        return view.ordered(rows, view.sortable[state.sort_index], state.descending)
+
     def _draw_table(self, snapshot: SecuritiesSnapshot) -> None:
         view, state, table = self._view, self._state, self._table
         signature = (
@@ -200,8 +218,7 @@ class SecuritiesTab(TabBase):
         if signature == state.signature:
             return
 
-        rows = view.visible(snapshot, self._filter, self._band, self._flagged_only)
-        ordered = view.ordered(rows, view.sortable[state.sort_index], state.descending)
+        ordered = self._visible_ordered(snapshot)
         keys = [view.key(row) for row in ordered]
         cursor_key = self._cursor_key(table)
 

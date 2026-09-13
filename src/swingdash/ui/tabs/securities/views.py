@@ -29,6 +29,10 @@ class Column[R]:
     # Value to sort by, or None if the column isn't sortable. Rows whose value
     # is None always sink to the bottom.
     sort: Callable[[R], object] | None = None
+    # Raw value for CSV export - independent of the styled Text `cells`
+    # produce and of `sort`'s transformed keys (lower-cased strings, band
+    # ranks, ...). Every column should set this; None exports as "".
+    value: Callable[[R], object] | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,13 @@ class View[R]:
         missing = sorted((r for r in rows if sort(r) is None), key=self.key)
         present.sort(key=sort, reverse=descending)  # type: ignore[arg-type]
         return present + missing
+
+    def values(self, rows: Sequence[R]) -> list[tuple[object, ...]]:
+        """One row of raw values per input row, in column order - for CSV export."""
+        return [
+            tuple("" if col.value is None else col.value(row) for col in self.columns)
+            for row in rows
+        ]
 
 
 # --- cells --------------------------------------------------------------------
@@ -168,13 +179,39 @@ STOCKS = View[Equity](
     id="stocks",
     title="Stocks",
     columns=(
-        Column("symbol", "SYMBOL", 12, lambda e: e.symbol),
-        Column("name", "NAME", 36, lambda e: e.name.lower()),
-        Column("sector", "SECTOR", 26, lambda e: _lower(e.sector)),
-        Column("mcap", "MCAP CR", 12, lambda e: e.market_cap_cr),
-        Column("band", "BAND", 5, lambda e: _band_rank(e.band)),
-        Column("surveillance", "SURVEILLANCE", 18, _severity),
-        Column("listed", "LISTED", 11, lambda e: e.listed_on),
+        Column("symbol", "SYMBOL", 12, sort=lambda e: e.symbol, value=lambda e: e.symbol),
+        Column("name", "NAME", 36, sort=lambda e: e.name.lower(), value=lambda e: e.name),
+        Column(
+            "sector",
+            "SECTOR",
+            26,
+            sort=lambda e: _lower(e.sector),
+            value=lambda e: e.sector or "",
+        ),
+        Column(
+            "mcap", "MCAP CR", 12, sort=lambda e: e.market_cap_cr, value=lambda e: e.market_cap_cr
+        ),
+        Column(
+            "band",
+            "BAND",
+            5,
+            sort=lambda e: _band_rank(e.band),
+            value=lambda e: e.band.label if e.band else "",
+        ),
+        Column(
+            "surveillance",
+            "SURVEILLANCE",
+            18,
+            sort=_severity,
+            value=lambda e: " ".join(e.surveillance.labels()),
+        ),
+        Column(
+            "listed",
+            "LISTED",
+            11,
+            sort=lambda e: e.listed_on,
+            value=lambda e: e.listed_on.isoformat() if e.listed_on else "",
+        ),
     ),
     rows=lambda s: s.equities,
     key=lambda e: e.symbol,
@@ -188,16 +225,27 @@ INDICES = View[IndexRow](
     id="indices",
     title="Indices",
     columns=(
-        Column("name", "INDEX", 36, lambda i: i.name),
-        Column("category", "CATEGORY", 13, lambda i: i.category),
-        Column("last", "CLOSE", 11, lambda i: i.last),
-        Column("change", "CHG%", 7, lambda i: i.change_pct),
-        Column("pe", "P/E", 6, lambda i: i.pe),
-        Column("pb", "P/B", 6, lambda i: i.pb),
-        Column("dy", "DIV Y", 6, lambda i: i.dividend_yield),
-        Column("high", "52W HIGH", 11),
-        Column("low", "52W LOW", 11),
-        Column("breadth", "ADV/DEC", 8),
+        Column("name", "INDEX", 36, sort=lambda i: i.name, value=lambda i: i.name),
+        Column("category", "CATEGORY", 13, sort=lambda i: i.category, value=lambda i: i.category),
+        Column("last", "CLOSE", 11, sort=lambda i: i.last, value=lambda i: i.last),
+        Column("change", "CHG%", 7, sort=lambda i: i.change_pct, value=lambda i: i.change_pct),
+        Column("pe", "P/E", 6, sort=lambda i: i.pe, value=lambda i: i.pe),
+        Column("pb", "P/B", 6, sort=lambda i: i.pb, value=lambda i: i.pb),
+        Column(
+            "dy",
+            "DIV Y",
+            6,
+            sort=lambda i: i.dividend_yield,
+            value=lambda i: i.dividend_yield,
+        ),
+        Column("high", "52W HIGH", 11, value=lambda i: i.year_high),
+        Column("low", "52W LOW", 11, value=lambda i: i.year_low),
+        Column(
+            "breadth",
+            "ADV/DEC",
+            8,
+            value=lambda i: f"{i.advances}/{i.declines}" if i.advances is not None else "",
+        ),
     ),
     rows=lambda s: s.indices,
     key=lambda i: i.name,
@@ -209,12 +257,36 @@ ETFS = View[Etf](
     id="etfs",
     title="ETFs",
     columns=(
-        Column("symbol", "SYMBOL", 12, lambda e: e.symbol),
-        Column("name", "NAME", 46, lambda e: e.name.lower()),
-        Column("underlying", "UNDERLYING", 28, lambda e: e.underlying.lower()),
-        Column("class", "CLASS", 10, lambda e: e.asset_class.lower()),
-        Column("band", "BAND", 5, lambda e: _band_rank(e.band)),
-        Column("listed", "LISTED", 11, lambda e: e.listed_on),
+        Column("symbol", "SYMBOL", 12, sort=lambda e: e.symbol, value=lambda e: e.symbol),
+        Column("name", "NAME", 46, sort=lambda e: e.name.lower(), value=lambda e: e.name),
+        Column(
+            "underlying",
+            "UNDERLYING",
+            28,
+            sort=lambda e: e.underlying.lower(),
+            value=lambda e: e.underlying,
+        ),
+        Column(
+            "class",
+            "CLASS",
+            10,
+            sort=lambda e: e.asset_class.lower(),
+            value=lambda e: e.asset_class.title(),
+        ),
+        Column(
+            "band",
+            "BAND",
+            5,
+            sort=lambda e: _band_rank(e.band),
+            value=lambda e: e.band.label if e.band else "",
+        ),
+        Column(
+            "listed",
+            "LISTED",
+            11,
+            sort=lambda e: e.listed_on,
+            value=lambda e: e.listed_on.isoformat() if e.listed_on else "",
+        ),
     ),
     rows=lambda s: s.etfs,
     key=lambda e: e.symbol,

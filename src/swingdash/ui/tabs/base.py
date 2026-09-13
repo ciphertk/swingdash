@@ -9,6 +9,10 @@ Subclasses implement `refresh_view()` and, if they use the global watchlist,
 set `uses_watchlist = True` and implement `on_watchlist_changed()`. They must
 not define `on_mount` themselves - override `on_tab_mount()` instead, so the
 base setup always runs exactly once.
+
+Every tab also gets CSV export (`x`) for free: implement `export_data()` to
+return the current view's rows - filtered and sorted exactly as shown - and
+the base class handles the keybinding, the file and the notification.
 """
 
 from __future__ import annotations
@@ -16,11 +20,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
+from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.timer import Timer
 from textual.widgets import Static
 
 from swingdash.domain.watchlist import Watchlist
+from swingdash.ui.export import ExportTable, write_csv
 
 if TYPE_CHECKING:
     from swingdash.services.container import Services
@@ -36,6 +42,10 @@ class _Dashboard(Protocol):
 class TabBase(Vertical):
     uses_watchlist: ClassVar[bool] = False
     REFRESH_HZ: ClassVar[float] = 2.0
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("x", "export_csv", "Export CSV"),
+    ]
 
     def __init__(self, *, id: str | None = None) -> None:
         super().__init__(id=id)
@@ -53,6 +63,14 @@ class TabBase(Vertical):
 
     def on_watchlist_changed(self, watchlist: Watchlist | None) -> None:
         """Called with the active global watchlist (and on every change) when uses_watchlist."""
+
+    def export_data(self) -> ExportTable | None:
+        """
+        The data currently on screen for this tab (or its active subtab) -
+        filtered and sorted exactly as shown. None means there is nothing to
+        export yet.
+        """
+        return None
 
     @property
     def services(self) -> Services:
@@ -86,6 +104,21 @@ class TabBase(Vertical):
         self._active = False
         if self._timer is not None:
             self._timer.pause()
+
+    # --- shared actions ------------------------------------------------------
+
+    def action_export_csv(self) -> None:
+        try:
+            table = self.export_data()
+            if table is None or not table.rows:
+                self.app.notify("Nothing to export yet.", severity="warning")
+                return
+            path = write_csv(table, self.services.settings.paths.exports_dir)
+        except Exception as exc:
+            logger.error("export failed", exc_info=exc)
+            self.app.notify(f"Export failed: {exc}", severity="error")
+            return
+        self.app.notify(f"Exported {len(table.rows):,} rows to {path.name}")
 
     def _watchlist_changed(self, watchlist: Watchlist | None) -> None:
         if self._failed:

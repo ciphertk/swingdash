@@ -45,6 +45,7 @@ src/swingdash/
     securities.py           Securities tab's data: NSE datasets + Upstox sector backfill
   ui/                       the only place textual is imported
     app.py                  shell: header, tab strip, global watchlist, CRUD actions
+    export.py               ExportTable + write_csv - the `x` CSV export shared by every tab
     tabs/registry.py        TABS tuple - adding a tab = one package + one entry
     tabs/base.py            TabBase lifecycle (lazy mount, pause when hidden, error containment)
     tabs/rvol/              LiveRvolTab + tcss (watchlist tab)
@@ -59,8 +60,9 @@ contracts in `pyproject.toml` (also: domain has no frameworks/SDKs/I/O,
 services depend on `ports.py` not concrete Upstox adapters). If a contract
 breaks, fix the design - don't loosen the contract.
 
-User data never lives in the repo: DB/token/logs/instrument cache are under
-the OS user dirs (`%LOCALAPPDATA%\swingdash`). Schema changes go in
+User data never lives in the repo: DB/token/logs/instrument cache/CSV
+exports are under the OS user dirs (`%LOCALAPPDATA%\swingdash`, exports in
+its `Exports` subfolder). Schema changes go in
 `adapters/storage/migrations.py` as a new `PRAGMA user_version` step.
 
 ## Architecture principles
@@ -79,7 +81,8 @@ the OS user dirs (`%LOCALAPPDATA%\swingdash`). Schema changes go in
   leases), built when the second consumer actually appears.
 - **Tabs:** subclass `TabBase`; implement `on_tab_mount`, `refresh_view`,
   `on_watchlist_changed`. Don't define `on_mount`. Tab keys must avoid the
-  app's reserved `1-9 w n e d q ctrl+p`. Scope CSS in the tab's `.tcss`.
+  app's reserved `1-9 w n e d q ctrl+p`, plus `x` (CSV export, bound once on
+  `TabBase` - see below). Scope CSS in the tab's `.tcss`.
 - **Domain is pure, services do I/O.** Metrics take data in and return a
   score; register them in `domain/metrics/registry.py`.
 - Caching tiers stay separate: near-real-time (feed, delta-fetched candle
@@ -97,6 +100,14 @@ the OS user dirs (`%LOCALAPPDATA%\swingdash`). Schema changes go in
   visible row *set* changes (filter, new data); re-sort in place otherwise.
   See `ui/tabs/securities/pane.py` for the pattern if another tab grows a
   large table.
+- **CSV export (`x`) is one mechanism, `ui/export.py`, shared by every tab.**
+  `TabBase.action_export_csv` calls the tab's `export_data() -> ExportTable
+  | None` and writes it; a tab only supplies its current rows, already
+  filtered and sorted exactly as shown (never the full underlying dataset,
+  never re-deriving order from scratch - reuse the same rows/keys the
+  on-screen render used). Values are raw (numbers, ISO dates, joined label
+  strings), never the styled `Text` cells the table renders - see
+  `views.py`'s `Column.value` vs `Column.sort`/`View.cells`.
 
 ## Upstox - verified facts
 
