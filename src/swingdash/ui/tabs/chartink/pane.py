@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from functools import partial
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar, Literal, cast
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -35,6 +35,7 @@ from swingdash.domain.chartink import (
     ImportTarget,
     ScreenerDef,
     WidgetDef,
+    color_key,
 )
 from swingdash.domain.securities import PriceBand
 from swingdash.services.chartink import ChartinkView, EnrichedRow, RunStatus
@@ -43,6 +44,7 @@ from swingdash.ui.export import ExportTable
 from swingdash.ui.tabs.base import TabBase
 from swingdash.ui.tabs.chartink import cells
 from swingdash.ui.tabs.chartink.add_modal import AddChartinkModal
+from swingdash.ui.tabs.chartink.columns_modal import ColumnsPayloadModal
 from swingdash.ui.tabs.chartink.dashboard_picker import DashboardPicker
 from swingdash.ui.watchlist.confirm_modal import ConfirmModal
 from swingdash.ui.widgets.nav_table import NavTable
@@ -150,7 +152,8 @@ class ChartinkTab(TabBase):
             return None
         result = view.item.result
         columns = cells.data_columns(result)
-        headers = [cells.key_header(result), *(cells.header(c) for c in columns)]
+        specs = view.item.columns
+        headers = [cells.key_header(result), *(cells.header(c, specs.get(c)) for c in columns)]
         if view.enriched:
             headers += ["BAND", "BURST POWER"]
         rows: list[list[object]] = []
@@ -339,23 +342,24 @@ class ChartinkTab(TabBase):
             return
         self._importing = target.url
         self.app.notify(f"Reading {target.url} ...")
-        fetch = self._fetch_screener if target.kind == "screener" else self._fetch_dashboard
-        self.run_worker(
-            partial(fetch, target.url, name), thread=True, exit_on_error=False, group="import"
+        fetch = (
+            partial(self._fetch_screener, target.url, name, target.payload)
+            if target.kind == "screener"
+            else partial(self._fetch_dashboard, target.url)
         )
+        self.run_worker(fetch, thread=True, exit_on_error=False, group="import")
 
-    def _fetch_screener(self, url: str, name: str) -> None:
+    def _fetch_screener(self, url: str, name: str, payload: ChartinkRequest | None) -> None:
         """Worker thread."""
         try:
             screener = self.services.chartink.fetch_screener(url)
         except Exception as exc:
             self.app.call_from_thread(self._import_failed, exc)
             return
-        self.app.call_from_thread(self._screener_fetched, screener, url, name)
+        self.app.call_from_thread(self._screener_fetched, screener, url, name, payload)
 
-    def _fetch_dashboard(self, url: str, name: str) -> None:
-        """Worker thread."""
-        del name  # widgets keep their own names; the dashboard names the branch
+    def _fetch_dashboard(self, url: str) -> None:
+        """Worker thread. Widgets keep their own names; the dashboard names the branch."""
         try:
             dashboard = self.services.chartink.fetch_dashboard(url)
         except Exception as exc:
@@ -367,11 +371,36 @@ class ChartinkTab(TabBase):
         self._importing = None
         self.app.notify(f"Import failed: {exc}", severity="error", timeout=10)
 
-    def _screener_fetched(self, screener: ScreenerDef, url: str, name: str) -> None:
+    def _screener_fetched(
+        self, screener: ScreenerDef, url: str, name: str, payload: ChartinkRequest | None
+    ) -> None:
         self._importing = None
+        if payload is None and screener.custom_columns:
+            # A link can't bring custom columns; offer to take the payload now.
+            self.app.push_screen(
+                ColumnsPayloadModal(screener),
+                partial(self._columns_payload_given, screener, url, name),
+            )
+            return
+        self._add_screener(screener, url, name, payload)
+
+    def _columns_payload_given(
+        self,
+        screener: ScreenerDef,
+        url: str,
+        name: str,
+        answer: ChartinkRequest | Literal["skip"] | None,
+    ) -> None:
+        if answer is None:
+            return
+        self._add_screener(screener, url, name, None if answer == "skip" else answer)
+
+    def _add_screener(
+        self, screener: ScreenerDef, url: str, name: str, payload: ChartinkRequest | None
+    ) -> None:
         chartink = self.services.chartink
         try:
-            item = chartink.add_screener(screener, url, name or None)
+            item = chartink.add_screener(screener, url, name or None, payload)
         except ChartinkInputError as exc:
             self.app.notify(str(exc), severity="error", timeout=10)
             return
@@ -661,6 +690,7 @@ class ChartinkTab(TabBase):
         table.clear(columns=True)
 
         columns = cells.data_columns(result)
+        specs = view.item.columns
         arrow = " v" if self._descending else " ^"
 
         def add(key: str, label: str) -> None:
@@ -668,7 +698,7 @@ class ChartinkTab(TabBase):
 
         add(cells.KEY_COLUMN, cells.key_header(result))
         for column in columns:
-            add(column, cells.header(column))
+            add(column, cells.header(column, specs.get(column)))
         if view.enriched:
             add(cells.BAND_COLUMN, "BAND")
             add(cells.BURST_COLUMN, "BURST")
@@ -680,7 +710,12 @@ class ChartinkTab(TabBase):
             row_key = str(index)
             row_cells = [
                 cells.key_cell(row.key, enriched.symbol is not None),
-                *(cells.value_cell(c, row.values.get(c)) for c in columns),
+                *(
+                    cells.value_cell(
+                        c, row.values.get(c), specs.get(c), row.values.get(color_key(c))
+                    )
+                    for c in columns
+                ),
             ]
             if view.enriched:
                 row_cells += [cells.band_cell(enriched.band), cells.burst_cell(enriched.burst)]
@@ -761,6 +796,12 @@ class ChartinkTab(TabBase):
             if result.data_time is not None:
                 text.append(f"data {result.data_time:%H:%M}  ", style="grey62")
             text.append("Chartink data may be delayed ~5 min", style="grey50")
+        if item.missing_columns:
+            text.append(
+                f"\nwithout its custom columns ({', '.join(item.missing_columns)}) - a link "
+                "can't fetch them; press a and paste the link, then its payload below it",
+                style="yellow",
+            )
         if item.error:
             prefix = "last run failed (showing the previous result): " if result else "failed: "
             text.append(f"\n{prefix}{item.error}", style="red")
@@ -781,7 +822,7 @@ class ChartinkTab(TabBase):
                     cells.KEY_COLUMN: cells.key_header(view.item.result),
                     cells.BAND_COLUMN: "BAND",
                     cells.BURST_COLUMN: "BURST",
-                }.get(self._sort, cells.header(self._sort))
+                }.get(self._sort) or cells.header(self._sort, view.item.columns.get(self._sort))
                 text.append(
                     f"sort {label.lower()}{'v' if self._descending else '^'}  ", style="cyan"
                 )
@@ -793,6 +834,11 @@ class ChartinkTab(TabBase):
                 text.append("Burst Power loading history...  ", style="yellow")
             elif not view.item.result.is_stock_list:
                 text.append("not a stock list - no Band/Burst columns  ", style="grey50")
+            if any(cells.unnamed(c, view.item.columns.get(c)) for c in view.item.result.columns):
+                text.append(
+                    "column names: add the screener's link on the line above its payload  ",
+                    style="grey50",
+                )
         if self._event_log:
             text.append(" | ".join(self._event_log[-2:]), style="yellow")
         return text

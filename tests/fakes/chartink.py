@@ -41,6 +41,8 @@ class FakeChartinkSource:
                     raise outcome
                 return outcome
         if request.kind is ChartinkKind.SCREENER:
+            if "column_clause" in request.fields:
+                return parsers.parse_screener_response(_json("screener_process_columns.json"))
             return parsers.parse_screener_response(_json("screener_process.json"))
         if "GROUP BY symbol" in main:
             return parsers.parse_widget_response(_json("widget_table.json"))
@@ -50,7 +52,9 @@ class FakeChartinkSource:
 
     def screener(self, url: str) -> ScreenerDef:
         self.calls.append(("page", url))
-        return parsers.parse_screener_page((FIXTURES / "screener_page.html").read_text("utf-8"))
+        # "total-universe-v2" is a screener with custom columns (RVOL%, MSwing).
+        page = "screener_page_columns.html" if "total-universe" in url else "screener_page.html"
+        return parsers.parse_screener_page((FIXTURES / page).read_text("utf-8"))
 
     def dashboard(self, url: str) -> DashboardDef:
         self.calls.append(("page", url))

@@ -4,13 +4,16 @@ objects out, tested against trimmed real captures in tests/fixtures/chartink.
 
 Shapes (verified Sep 2026):
 - /screener/process: {"data": [{"sr", "nsecode", "name", "bsecode", "close",
-  "per_chg", "volume", ...custom columns}], ...}
+  "per_chg", "volume"}], ...} - or, when the request has a column_clause,
+  "scan-column-<id>" values with "<id>-conditional-filters-color" flags.
 - /widget/process: {"metaData": [{"columnAliases", "groups", "lastUpdateTime",
   "availableLimit", ...}], "groupData": [{"name", "results": [{alias: [values]}]}]}
   - each alias holds one value per bar; the last one is the latest.
 - dashboard page: `:dashboard` and `:widgets` JSON attributes on the Vue root.
   `:template-widgets` is Chartink's starter set on every page, not the dashboard's.
-- screener page: `:scan-json` with the ready clause in `atlas_query`.
+- screener page: `:scan-json` with the ready clause in `atlas_query`, and the
+  editor state in `atlas_json` (its `columns.children` name and colour the
+  screener's columns).
 """
 
 from __future__ import annotations
@@ -26,14 +29,21 @@ from swingdash.domain.calendar import IST
 from swingdash.domain.chartink import (
     ChartinkResult,
     ChartinkRow,
+    ColumnSpec,
     DashboardDef,
     ScreenerDef,
     Value,
     WidgetDef,
+    color_key,
+    column_key,
 )
 
 # Screener fields that are bookkeeping, not data worth a column.
 _SCREENER_HIDDEN = {"sr"}
+# With a column_clause, columns arrive as 'scan-column-<id>' plus a colour
+# flag '<id>-conditional-filters-color' (verified Sep 2026).
+_SCAN_COLUMN = re.compile(r"^scan-column-(.+)$")
+_COLOR_FIELD = re.compile(r"^(.+)-conditional-filters-color$")
 
 
 def parse_screener_response(payload: Any) -> ChartinkResult:
@@ -47,13 +57,22 @@ def parse_screener_response(payload: Any) -> ChartinkResult:
     columns: list[str] = []
     rows: list[ChartinkRow] = []
     for record in data:
-        for column in record:
-            if column not in _SCREENER_HIDDEN and column not in columns:
+        values: dict[str, Value] = {}
+        for field, raw in record.items():
+            if field in _SCREENER_HIDDEN:
+                continue
+            color = _COLOR_FIELD.match(field)
+            if color:
+                # A colour flag, not data: kept on the row for its column.
+                values[color_key(column_key(color.group(1)))] = _value(raw)
+                continue
+            scan_column = _SCAN_COLUMN.match(field)
+            column = column_key(scan_column.group(1)) if scan_column else field
+            values[column] = _value(raw)
+            if column not in columns:
                 columns.append(column)
         key = str(record.get("nsecode") or record.get("bsecode") or record.get("name") or "")
-        rows.append(
-            ChartinkRow(key, {c: _value(v) for c, v in record.items() if c not in _SCREENER_HIDDEN})
-        )
+        rows.append(ChartinkRow(key, values))
     return ChartinkResult(tuple(columns), tuple(rows), group_by="symbol")
 
 
@@ -122,7 +141,32 @@ def parse_screener_page(page: str) -> ScreenerDef:
         slug=str(scan.get("slug") or ""),
         is_private=bool(scan.get("is_private")),
         clause=str(clause).strip() if clause else None,
+        columns=_column_specs(scan.get("atlas_json")),
     )
+
+
+def _column_specs(atlas_json: Any) -> dict[str, ColumnSpec]:
+    """
+    Column names and colours from the screener's editor state
+    (`atlas_json.columns.children`). Best effort: a screener without it, or a
+    changed shape, just has no names - the scan itself still runs.
+    """
+    try:
+        atlas = json.loads(atlas_json) if isinstance(atlas_json, str) else atlas_json
+        children: list[Any] = atlas["columns"]["children"]
+    except (ValueError, KeyError, TypeError):
+        return {}
+    specs: dict[str, ColumnSpec] = {}
+    for child in children:
+        if not isinstance(child, dict) or child.get("isEnabled") is False or not child.get("id"):
+            continue
+        filters = (child.get("colorFilters") or {}).get("children") or []
+        colors = tuple(
+            str(f["color"]) if isinstance(f, dict) and f.get("color") else None for f in filters
+        )
+        column = column_key(str(child["id"]))
+        specs[column] = ColumnSpec(name=str(child.get("name") or column), colors=colors)
+    return specs
 
 
 def _widget(raw: dict[str, Any]) -> WidgetDef:

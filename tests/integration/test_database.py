@@ -7,6 +7,7 @@ import pytest
 from swingdash.adapters.storage.db import Database
 from swingdash.adapters.storage.migrations import (
     LATEST_VERSION,
+    MIGRATIONS,
     SchemaTooNewError,
     migrate,
     schema_version,
@@ -106,5 +107,27 @@ def test_v2_database_gains_the_securities_tables(tmp_path: Path):
             "ref_datasets",
         } <= tables
         assert db.connection().execute("SELECT value FROM app_state").fetchone()[0] == "nxtDay"
+    finally:
+        db.close()
+
+
+def test_v4_database_keeps_its_chartink_items(tmp_path: Path):
+    path = tmp_path / "v4.db"
+    db = Database(path)
+    try:
+        conn = db.connection()
+        for number, sql in MIGRATIONS:
+            if number <= 4:
+                conn.executescript(sql)
+        conn.execute(
+            "INSERT INTO chartink_items (name, kind, fields_json, position, created_at)"
+            " VALUES ('Mine', 'screener', '{}', 0, '2026-09-13')"
+        )
+        conn.execute("PRAGMA user_version = 4")
+        conn.commit()
+
+        assert migrate(db) == LATEST_VERSION
+        row = conn.execute("SELECT name, columns_json FROM chartink_items").fetchone()
+        assert (row[0], row[1]) == ("Mine", None)
     finally:
         db.close()

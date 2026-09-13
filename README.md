@@ -140,6 +140,11 @@ What `a` accepts:
 
 - **A screener link** (`https://chartink.com/screener/consolidatedbo`) -
   swingdash reads the scan clause from the page. Works for public screeners.
+  If the screener has **custom columns** (say RVOL%, MSwing), a link alone
+  can't fetch them - Chartink builds them in your browser - so swingdash
+  asks for the screener's request payload too (or skip, to add it without).
+- **A screener link, then its payload on the next line** - does the same
+  in one paste: custom columns with their Chartink names and colours.
 - **A dashboard link** (`https://chartink.com/dashboard/130216`) - pick
   which widgets to import (tables are preselected); they're grouped under
   the dashboard's name. Chart widgets come in as a table of their latest
@@ -148,8 +153,9 @@ What `a` accepts:
   screener/widget and copy the payload of `screener/process` or
   `widget/process`, in any of its forms ("view source", "view parsed", or a
   Python dict like `{'scan_clause': '...'}`). This is the way to use
-  **private** screeners/dashboards and screeners with **custom columns**
-  (they travel in the payload; a link brings only the scan clause).
+  **private** screeners/dashboards. Custom columns come through too, but
+  without their names (the payload doesn't carry them) - put the
+  screener's link on the line above to get the names and colours.
 - **A bare clause** - `( {cash} ( ... ) )` for a screener, `select ...`
   for a widget.
 

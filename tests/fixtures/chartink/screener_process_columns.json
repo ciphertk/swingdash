@@ -1,0 +1,50 @@
+{
+ "draw": 1,
+ "recordsTotal": 3,
+ "recordsFiltered": 3,
+ "data": [
+  {
+   "sr": 1,
+   "nsecode": "DIVISLAB",
+   "name": "Divi's Laboratories Limited",
+   "bsecode": "532488",
+   "scan-column-default-close": 9322,
+   "scan-column-default-percent-change": -1.23,
+   "default-percent-change-conditional-filters-color": 2,
+   "scan-column-default-volume": 516756,
+   "scan-column-_7b5fd": 117.98,
+   "_7b5fd-conditional-filters-color": 2,
+   "scan-column-_d20ef": 1.26,
+   "_d20ef-conditional-filters-color": 1
+  },
+  {
+   "sr": 2,
+   "nsecode": "APOLLOHOSP",
+   "name": "Apollo Hospitals Enterprise Limited",
+   "bsecode": "508869",
+   "scan-column-default-close": 8836,
+   "scan-column-default-percent-change": -0.72,
+   "default-percent-change-conditional-filters-color": 2,
+   "scan-column-default-volume": 207930,
+   "scan-column-_7b5fd": 61.66,
+   "_7b5fd-conditional-filters-color": 2,
+   "scan-column-_d20ef": -0.06,
+   "_d20ef-conditional-filters-color": 2
+  },
+  {
+   "sr": 3,
+   "nsecode": "NAVINFLUOR",
+   "name": "Navin Fluorine International Limited",
+   "bsecode": "532504",
+   "scan-column-default-close": 8543.5,
+   "scan-column-default-percent-change": -1.8,
+   "default-percent-change-conditional-filters-color": 2,
+   "scan-column-default-volume": 86538,
+   "scan-column-_7b5fd": 67.77,
+   "_7b5fd-conditional-filters-color": 2,
+   "scan-column-_d20ef": 0.45,
+   "_d20ef-conditional-filters-color": 1
+  }
+ ],
+ "link": "scanlink:4d7b25f3f4ee02e71465cdf408dd1bae"
+}

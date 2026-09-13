@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import csv
 
-from textual.widgets import Input, TextArea
+from textual.widgets import Input, Label, TextArea
 
 from swingdash.domain.chartink import ChartinkResult, ChartinkRow
 from swingdash.services.container import Services
 from swingdash.ui.app import SwingDashApp
 from swingdash.ui.tabs.chartink.add_modal import AddChartinkModal
+from swingdash.ui.tabs.chartink.columns_modal import ColumnsPayloadModal
 from swingdash.ui.tabs.chartink.dashboard_picker import DashboardPicker
 from swingdash.ui.tabs.chartink.pane import ChartinkTab
 from swingdash.ui.tabs.rvol.pane import LiveRvolTab
 from swingdash.ui.watchlist.confirm_modal import ConfirmModal
 from swingdash.ui.widgets.nav_table import NavTable
 from swingdash.ui.widgets.prompt_modal import PromptModal
-from tests.fakes.chartink import FakeChartinkSource
+from tests.fakes.chartink import FIXTURES, FakeChartinkSource
 from tests.ui.helpers import until
 
 CLAUSE = "( {cash} ( my stocks ) )"
@@ -298,3 +299,78 @@ async def test_last_results_show_on_reopen_without_running(services, chartink_so
         await _open(reopened, pilot)
         await until(pilot, lambda: _table(reopened).row_count == 2)
         assert len(chartink_source.calls) == calls
+
+
+UNIVERSE = "https://chartink.com/screener/total-universe-v2"
+PAYLOAD = (FIXTURES / "screener_payload_columns.json").read_text(encoding="utf-8")
+
+
+def _cell_style(app: SwingDashApp, row: int, column: int) -> str:
+    cell = _table(app).get_row_at(row)[column]
+    return str(cell.style)
+
+
+async def test_link_with_custom_columns_asks_for_the_payload(services, chartink_source):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(180, 45)) as pilot:
+        await _open(app, pilot)
+        await _add(app, pilot, UNIVERSE)
+        await until(pilot, lambda: isinstance(app.screen, ColumnsPayloadModal))
+        assert "RVOL%, MSwing" in str(app.screen.query_one(Label).render())
+
+        # Something that isn't a payload with columns is explained, not accepted.
+        app.screen.query_one("#payload", TextArea).text = "( {cash} ( close > 15 ) )"
+        await pilot.click("#add")
+        await pilot.pause()
+        assert isinstance(app.screen, ColumnsPayloadModal)
+        assert "column_clause" in str(app.screen.query_one("#columns-error", Label).render())
+
+        app.screen.query_one("#payload", TextArea).text = PAYLOAD
+        await pilot.pause(0.3)  # a Button ignores a second click within 0.2s
+        await pilot.click("#add")
+        await until(pilot, lambda: _table(app).row_count == 3)
+
+        assert _headers(app) == [
+            "SYMBOL", "NAME", "CLOSE", "% CHG", "VOLUME", "RVOL%", "MSWING", "BAND", "BURST",
+        ]  # fmt: skip
+        divislab = _rows(app)[0]
+        assert divislab[0] == "DIVISLAB" and divislab[5] == "117.98" and divislab[6] == "1.26"
+        # Chartink's own colours: RVOL% < 120 red, MSwing > 0 green, % change red.
+        assert _cell_style(app, 0, 5) == "#F23645"
+        assert _cell_style(app, 0, 6) == "#4CAF50"
+        assert _cell_style(app, 0, 3) == "#F23645"
+        assert "Total Universe V2" in _header(app)
+        assert "without its custom columns" not in _header(app)
+
+
+async def test_link_and_payload_pasted_together_skip_the_question(services, chartink_source):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(180, 45)) as pilot:
+        await _open(app, pilot)
+        await _add(app, pilot, f"{UNIVERSE}\n{PAYLOAD}")
+        await until(pilot, lambda: _table(app).row_count == 3)
+        assert "RVOL%" in _headers(app)
+        assert not isinstance(app.screen, ColumnsPayloadModal)
+
+
+async def test_skipping_the_payload_says_what_is_missing(services, chartink_source):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(180, 45)) as pilot:
+        await _open(app, pilot)
+        await _add(app, pilot, UNIVERSE)
+        await until(pilot, lambda: isinstance(app.screen, ColumnsPayloadModal))
+        await pilot.click("#skip")
+        await until(pilot, lambda: _table(app).row_count == 5)
+        assert "without its custom columns (RVOL%, MSwing)" in _header(app)
+
+
+async def test_payload_alone_shows_columns_and_how_to_name_them(services, chartink_source):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(180, 45)) as pilot:
+        await _open(app, pilot)
+        await _add(app, pilot, PAYLOAD, name="Universe")
+        await until(pilot, lambda: _table(app).row_count == 3)
+        headers = _headers(app)
+        assert headers[:6] == ["SYMBOL", "NAME", "CLOSE", "% CHG", "VOLUME", "_7B5FD"]
+        assert not any("CONDITIONAL" in h for h in headers)
+        assert "column names: add the screener's link" in _status(app)

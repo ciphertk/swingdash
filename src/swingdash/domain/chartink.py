@@ -15,7 +15,7 @@ import ast
 import datetime as dt
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal, cast
 from urllib.parse import parse_qsl
@@ -41,6 +41,46 @@ _URL = re.compile(
 )
 
 
+# A screener's columns come back as 'scan-column-<id>', each with a colour
+# flag '<id>-conditional-filters-color'. Built-in columns have fixed ids;
+# they're renamed to the plain names a screener without columns returns.
+_BUILTIN_COLUMNS = {
+    "default-close": "close",
+    "default-percent-change": "per_chg",
+    "default-volume": "volume",
+}
+_COLOR_SUFFIX = ":color"
+
+
+def column_key(column_id: str) -> str:
+    """The result column for a Chartink column id ('default-close' -> 'close')."""
+    return _BUILTIN_COLUMNS.get(column_id, column_id)
+
+
+def color_key(column: str) -> str:
+    """Where a row keeps a column's colour flag (1-based index into its colours)."""
+    return column + _COLOR_SUFFIX
+
+
+def is_builtin_column(column: str) -> bool:
+    return column in _BUILTIN_COLUMNS.values()
+
+
+@dataclass(frozen=True)
+class ColumnSpec:
+    """How a screener's own column is named and coloured on Chartink."""
+
+    name: str
+    # Chartink's colour flag N picks colors[N-1]; the last is the "otherwise"
+    # case and often None (no colour). Hex, e.g. "#4CAF50FF".
+    colors: tuple[str | None, ...] = ()
+
+    def color(self, flag: Value) -> str | None:
+        if not isinstance(flag, int) or not 1 <= flag <= len(self.colors):
+            return None
+        return self.colors[flag - 1]
+
+
 class ChartinkKind(StrEnum):
     SCREENER = "screener"
     WIDGET = "widget"
@@ -63,6 +103,9 @@ class ImportTarget:
     kind: Literal["screener", "dashboard"]
     url: str
     slug: str
+    # A screener's request payload pasted along with its link - the only way
+    # to get its custom columns, which a link alone can't bring.
+    payload: ChartinkRequest | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +161,14 @@ class ScreenerDef:
     slug: str
     is_private: bool
     clause: str | None
+    # By result column (see column_key). Chartink builds the matching
+    # `column_clause` in the browser, so a link alone can't request these.
+    columns: dict[str, ColumnSpec] = field(default_factory=dict[str, ColumnSpec])
+
+    @property
+    def custom_columns(self) -> list[str]:
+        """Names of the columns beyond Chartink's built-in close/%change/volume."""
+        return [spec.name for key, spec in self.columns.items() if not is_builtin_column(key)]
 
     def request(self) -> ChartinkRequest:
         if not self.clause:
@@ -139,12 +190,22 @@ class ChartinkItem:
     fetched_at: dt.datetime | None
     # Why the latest run failed; the last good result is kept alongside it.
     error: str | None = None
+    # Names/colours of the screener's own columns, when imported from its page.
+    columns: dict[str, ColumnSpec] = field(default_factory=dict[str, ColumnSpec])
+
+    @property
+    def missing_columns(self) -> list[str]:
+        """Custom columns the screener has that this item doesn't request."""
+        if "column_clause" in self.request.fields:
+            return []
+        return [spec.name for key, spec in self.columns.items() if not is_builtin_column(key)]
 
 
 def parse_user_input(text: str) -> ChartinkRequest | ImportTarget:
     """
     Accepts, in order of precedence:
-    - a chartink.com/screener/<slug> or /dashboard/<id> link;
+    - a chartink.com/screener/<slug> or /dashboard/<id> link - a screener
+      link may be followed, on the next lines, by that screener's payload;
     - a JSON object or Python dict ({'scan_clause': '...'});
     - a form-encoded body (DevTools payload "view source");
     - `field: value` lines (DevTools payload "view parsed");
@@ -154,13 +215,25 @@ def parse_user_input(text: str) -> ChartinkRequest | ImportTarget:
     if not stripped:
         raise ChartinkInputError("Paste a Chartink link, a payload, or a scan clause.")
 
-    url = _URL.match(stripped)
+    first_line, _, rest = stripped.partition("\n")
+    url = _URL.match(first_line.strip())
     if url:
         kind: Literal["screener", "dashboard"] = (
             "screener" if url.group("kind").lower() == "screener" else "dashboard"
         )
         slug = url.group("slug")
-        return ImportTarget(kind, f"https://chartink.com/{kind}/{slug}", slug)
+        link = f"https://chartink.com/{kind}/{slug}"
+        if not rest.strip():
+            return ImportTarget(kind, link, slug)
+        payload = parse_user_input(rest)
+        if kind != "screener" or not isinstance(payload, ChartinkRequest):
+            raise ChartinkInputError(
+                "Only a screener link can be followed by a payload - paste a dashboard "
+                "link on its own."
+            )
+        if payload.kind is not ChartinkKind.SCREENER:
+            raise ChartinkInputError("That payload is a widget's, not a screener's.")
+        return ImportTarget(kind, link, slug, payload)
     if re.match(r"^https?://", stripped, re.IGNORECASE):
         raise ChartinkInputError(
             "Only chartink.com/screener/... and chartink.com/dashboard/... links can be imported."

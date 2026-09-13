@@ -141,11 +141,17 @@ CREATE TABLE IF NOT EXISTS chartink_items (
 );
 """
 
+# Names and colours of a screener's own columns, read from its Chartink page.
+_V5_CHARTINK_COLUMNS = """
+ALTER TABLE chartink_items ADD COLUMN columns_json TEXT;
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, _V1_BASELINE_SCHEMA),
     (2, _V2_APP_STATE),
     (3, _V3_SECURITIES),
     (4, _V4_CHARTINK),
+    (5, _V5_CHARTINK_COLUMNS),
 )
 LATEST_VERSION = MIGRATIONS[-1][0]
 

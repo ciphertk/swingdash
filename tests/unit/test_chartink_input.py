@@ -105,3 +105,30 @@ def test_bare_clauses_and_queries(text, field):
 def test_nothing_runnable_is_rejected(text):
     with pytest.raises(ChartinkInputError):
         parse_user_input(text)
+
+
+def test_a_screener_link_followed_by_its_payload():
+    text = (
+        "https://chartink.com/screener/total-universe-v2\n"
+        '{"scan_clause": "( {cash} ( close > 15 ) )", '
+        '"column_clause": " Daily Close as \'scan-column-default-close\'"}'
+    )
+    parsed = parse_user_input(text)
+    assert isinstance(parsed, ImportTarget)
+    assert parsed.url == "https://chartink.com/screener/total-universe-v2"
+    assert parsed.payload is not None
+    assert parsed.payload.kind is ChartinkKind.SCREENER
+    assert parsed.payload.fields["column_clause"].strip().startswith("Daily Close")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "https://chartink.com/dashboard/130216\n( {cash} ( close > 15 ) )",
+        "https://chartink.com/screener/x\nselect close where {cash} ( 1 = 1 ) GROUP BY symbol",
+        "https://chartink.com/screener/x\nnot a payload",
+    ],
+)
+def test_a_link_followed_by_the_wrong_kind_of_paste_is_rejected(text):
+    with pytest.raises(ChartinkInputError):
+        parse_user_input(text)

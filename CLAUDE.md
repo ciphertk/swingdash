@@ -222,8 +222,18 @@ No public API: we replay the website's own requests, anonymously. Verified
 - **Screener:** `POST /screener/process` form `scan_clause` (the site also
   sends `debug_clause`, optionally `column_clause` for custom columns) ->
   `{data:[{sr, nsecode, name, bsecode, close, per_chg, volume, ...}]}`.
-  `nsecode` is empty for BSE-only rows. The exact `column_clause` format is
-  **not yet verified** against a real custom-column payload.
+  `nsecode` is empty for BSE-only rows.
+- **Custom columns** (verified with the user's payload): with a
+  `column_clause`, values come back as `scan-column-<id>` (built-ins:
+  `default-close|percent-change|volume`) plus `<id>-conditional-filters-color`
+  = 1-based index into that column's colour rules (last = "otherwise").
+  The parser renames built-ins to `close/per_chg/volume`, keeps custom ones
+  as `<id>`, and stores flags on the row under `color_key(column)`. Names and
+  colours exist **only on the screener page** (`:scan-json.atlas_json` ->
+  `columns.children[{id, name, colorFilters.children[{color}]}]`); Chartink's
+  browser code compiles that tree into `column_clause`, so a link alone can't
+  request custom columns. Don't re-implement that compiler - take the payload
+  (link + payload in one paste, or `ColumnsPayloadModal` after a link import).
 - **Widget:** `POST /widget/process` form `query` (`select ... GROUP BY ...`),
   `use_live=1`, `limit`, `size` -> `{metaData:[{columnAliases, groups,
   lastUpdateTime(ms), availableLimit}], groupData:[{name, results:[{alias:

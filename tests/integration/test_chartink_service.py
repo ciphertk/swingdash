@@ -249,6 +249,44 @@ def test_screener_link_import_and_private_screeners(chartink):
         service.add_screener(private, "https://chartink.com/screener/secret")
 
 
+PAYLOAD_WITH_COLUMNS = (
+    Path(__file__).parents[1] / "fixtures" / "chartink" / "screener_payload_columns.json"
+)
+
+
+def test_link_with_payload_keeps_custom_columns_named_and_coloured(chartink, db: Database):
+    service, source, _ = chartink
+    url = "https://chartink.com/screener/total-universe-v2"
+    payload = service.parse(PAYLOAD_WITH_COLUMNS.read_text(encoding="utf-8"))
+    assert isinstance(payload, ChartinkRequest)
+    item = service.add_screener(service.fetch_screener(url), url, payload=payload)
+    _run(service, item.id)
+
+    assert source.calls[-1][0] == "screener"
+    saved = ChartinkRepository(db).get(item.id)  # names survive a restart
+    assert saved is not None and saved.missing_columns == []
+    assert saved.columns["_7b5fd"].name == "RVOL%"
+    assert saved.columns["_d20ef"].colors == ("#4CAF50FF", None)
+    assert saved.request.fields["column_clause"] == payload.fields["column_clause"]
+    assert saved.result is not None and "_d20ef" in saved.result.columns
+
+
+def test_link_alone_says_which_custom_columns_it_is_missing(chartink):
+    service, _, _ = chartink
+    url = "https://chartink.com/screener/total-universe-v2"
+    item = service.add_screener(service.fetch_screener(url), url)
+    assert "column_clause" not in item.request.fields
+    assert item.missing_columns == ["RVOL%", "MSwing"]
+
+
+def test_a_widget_payload_cannot_stand_in_for_a_screener(chartink):
+    service, _, _ = chartink
+    url = "https://chartink.com/screener/total-universe-v2"
+    widget = ChartinkRequest(ChartinkKind.WIDGET, {"query": "select 1"})
+    with pytest.raises(ChartinkInputError, match="widget"):
+        service.add_screener(service.fetch_screener(url), url, payload=widget)
+
+
 def test_rename_and_delete(chartink):
     service, _, _ = chartink
     item = service.add("Old", SCREENER)

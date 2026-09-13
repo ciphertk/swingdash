@@ -14,6 +14,7 @@ from swingdash.adapters.chartink.parsers import (
     parse_widget_response,
 )
 from swingdash.domain.calendar import IST
+from swingdash.domain.chartink import color_key
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "chartink"
 
@@ -127,3 +128,47 @@ def test_screener_page_carries_the_ready_scan_clause():
 def test_csrf_token_is_read_from_the_page_meta_tag():
     assert csrf_token(_text("screener_page.html")) == "fixture-token"
     assert csrf_token("<html></html>") is None
+
+
+def test_screener_with_column_clause_gets_plain_columns_and_colour_flags():
+    # A real response to a payload with custom columns (RVOL%, MSwing).
+    result = parse_screener_response(_json("screener_process_columns.json"))
+    assert result.columns == (
+        "nsecode",
+        "name",
+        "bsecode",
+        "close",
+        "per_chg",
+        "volume",
+        "_7b5fd",
+        "_d20ef",
+    )
+    divislab = result.rows[0].values
+    assert result.rows[0].key == "DIVISLAB"
+    assert (divislab["close"], divislab["per_chg"], divislab["_7b5fd"]) == (9322, -1.23, 117.98)
+    # Colour flags ride along on the row, never as columns.
+    assert divislab[color_key("per_chg")] == 2
+    assert divislab[color_key("_7b5fd")] == 2
+    assert divislab[color_key("_d20ef")] == 1
+    assert not any("conditional-filters-color" in c for c in result.columns)
+
+
+def test_screener_page_names_and_colours_its_columns():
+    screener = parse_screener_page(_text("screener_page_columns.html"))
+    assert screener.name == "Total Universe V2"
+    assert screener.clause is not None and screener.clause.startswith("( {166311}")
+    assert screener.custom_columns == ["RVOL%", "MSwing"]  # the disabled one is skipped
+    rvol = screener.columns["_7b5fd"]
+    assert rvol.colors == ("#4CAF50FF", "#F23645FF", None)
+    # Chartink's flag picks a colour, 1-based; the last is "otherwise".
+    assert (rvol.color(1), rvol.color(2), rvol.color(3), rvol.color(None)) == (
+        "#4CAF50FF",
+        "#F23645FF",
+        None,
+        None,
+    )
+    assert screener.columns["per_chg"].colors == ("#4CAF50FF", "#F23645FF")
+
+
+def test_a_screener_page_without_editor_state_has_no_column_names():
+    assert parse_screener_page(_text("screener_page.html")).columns == {}

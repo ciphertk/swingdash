@@ -25,8 +25,10 @@ from swingdash.domain.calendar import Session
 from swingdash.domain.chartink import (
     ChartinkInputError,
     ChartinkItem,
+    ChartinkKind,
     ChartinkRequest,
     ChartinkRow,
+    ColumnSpec,
     DashboardDef,
     ImportTarget,
     ScreenerDef,
@@ -131,9 +133,13 @@ class ChartinkService:
         return parse_user_input(text)
 
     def add(
-        self, name: str, request: ChartinkRequest, source_url: str | None = None
+        self,
+        name: str,
+        request: ChartinkRequest,
+        source_url: str | None = None,
+        columns: dict[str, ColumnSpec] | None = None,
     ) -> ChartinkItem:
-        item_id = self._repo.add(name.strip() or "Untitled", request, source_url)
+        item_id = self._repo.add(name.strip() or "Untitled", request, source_url, None, columns)
         self._changed()
         item = self.get(item_id)
         assert item is not None
@@ -148,14 +154,27 @@ class ChartinkService:
         return self._source.dashboard(url)
 
     def add_screener(
-        self, screener: ScreenerDef, url: str, name: str | None = None
+        self,
+        screener: ScreenerDef,
+        url: str,
+        name: str | None = None,
+        payload: ChartinkRequest | None = None,
     ) -> ChartinkItem:
+        """
+        `payload` is the screener's request as copied from the browser; with
+        it, the item runs exactly that (custom columns included) and takes
+        its column names and colours from the page.
+        """
+        if payload is not None:
+            if payload.kind is not ChartinkKind.SCREENER:
+                raise ChartinkInputError("That payload is a widget's, not a screener's.")
+            return self.add(name or screener.name, payload, url, screener.columns)
         if screener.is_private or not screener.clause:
             raise ChartinkInputError(
                 f"'{screener.name}' is private or has no scan clause - paste its request "
                 "payload from the browser's network tab instead."
             )
-        return self.add(name or screener.name, screener.request(), url)
+        return self.add(name or screener.name, screener.request(), url, screener.columns)
 
     def add_widgets(
         self, dashboard: DashboardDef, widgets: list[WidgetDef], url: str
@@ -164,7 +183,7 @@ class ChartinkService:
         if not widgets:
             return []
         collection = self._unique_collection(dashboard.name)
-        ids = self._repo.add_many([(w.name, w.request(), url, collection) for w in widgets])
+        ids = self._repo.add_many([(w.name, w.request(), url, collection, {}) for w in widgets])
         self._changed()
         return [item for item in self.items() if item.id in set(ids)]
 

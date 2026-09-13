@@ -15,10 +15,11 @@ from swingdash.domain.chartink import (
     ChartinkRequest,
     ChartinkResult,
     ChartinkRow,
+    ColumnSpec,
 )
 
-# (name, request, source_url, collection)
-NewItem = tuple[str, ChartinkRequest, str | None, str | None]
+# (name, request, source_url, collection, column specs)
+NewItem = tuple[str, ChartinkRequest, str | None, str | None, dict[str, ColumnSpec]]
 
 
 class ChartinkRepository:
@@ -50,8 +51,9 @@ class ChartinkRepository:
         request: ChartinkRequest,
         source_url: str | None = None,
         collection: str | None = None,
+        columns: dict[str, ColumnSpec] | None = None,
     ) -> int:
-        return self.add_many([(name, request, source_url, collection)])[0]
+        return self.add_many([(name, request, source_url, collection, columns or {})])[0]
 
     def add_many(self, items: Sequence[NewItem]) -> list[int]:
         """One transaction, so a dashboard import lands whole or not at all."""
@@ -61,13 +63,14 @@ class ChartinkRepository:
             position = conn.execute(
                 "SELECT COALESCE(MAX(position), -1) FROM chartink_items"
             ).fetchone()[0]
-            for name, request, source_url, collection in items:
+            for name, request, source_url, collection, columns in items:
                 position += 1
                 cursor = conn.execute(
                     """
                     INSERT INTO chartink_items
-                        (name, kind, fields_json, source_url, collection, position, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (name, kind, fields_json, source_url, collection, position, created_at,
+                         columns_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         name,
@@ -77,6 +80,7 @@ class ChartinkRepository:
                         collection,
                         position,
                         now,
+                        _columns_to_json(columns),
                     ),
                 )
                 ids.append(int(cursor.lastrowid or 0))
@@ -126,7 +130,23 @@ def _item(row: sqlite3.Row) -> ChartinkItem:
         result=_result_from_json(json.loads(row["result_json"])) if row["result_json"] else None,
         fetched_at=dt.datetime.fromisoformat(row["fetched_at"]) if row["fetched_at"] else None,
         error=row["error"],
+        columns=_columns_from_json(row["columns_json"]),
     )
+
+
+def _columns_to_json(columns: dict[str, ColumnSpec]) -> str | None:
+    if not columns:
+        return None
+    return json.dumps({k: {"name": s.name, "colors": list(s.colors)} for k, s in columns.items()})
+
+
+def _columns_from_json(text: str | None) -> dict[str, ColumnSpec]:
+    if not text:
+        return {}
+    return {
+        key: ColumnSpec(spec["name"], tuple(spec.get("colors") or ()))
+        for key, spec in json.loads(text).items()
+    }
 
 
 def _result_to_json(result: ChartinkResult) -> dict[str, Any]:

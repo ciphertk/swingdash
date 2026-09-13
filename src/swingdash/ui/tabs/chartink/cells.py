@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from rich.text import Text
 
-from swingdash.domain.chartink import ChartinkResult, Value
+from swingdash.domain.chartink import ChartinkResult, ColumnSpec, Value, is_builtin_column
 from swingdash.domain.metrics.burst_score import BurstScoreResult
 from swingdash.domain.securities import PriceBand
 
@@ -40,8 +40,15 @@ def key_header(result: ChartinkResult) -> str:
     return (result.group_by or "group").upper()
 
 
-def header(column: str) -> str:
-    return _HEADERS.get(column, column.upper())
+def header(column: str, spec: ColumnSpec | None = None) -> str:
+    if column in _HEADERS:
+        return _HEADERS[column]
+    return (spec.name if spec else column).upper()
+
+
+def unnamed(column: str, spec: ColumnSpec | None) -> bool:
+    """A screener's own column whose name we don't know (payload pasted without the link)."""
+    return spec is None and column.startswith("_") and not is_builtin_column(column)
 
 
 def key_text(key: str) -> str:
@@ -62,16 +69,31 @@ def _is_change(column: str) -> bool:
     return "chg" in lowered or "change" in lowered or lowered.endswith("%")
 
 
-def value_cell(column: str, value: Value) -> Text:
+def value_cell(
+    column: str, value: Value, spec: ColumnSpec | None = None, flag: Value = None
+) -> Text:
+    """`spec`/`flag`: the column's Chartink colours and this row's colour flag, when known."""
     if value is None or value == "":
         return _missing()
     if isinstance(value, str):
         return Text(value)
-    if _is_change(column):
-        return Text(f"{value:+,.2f}", style="green" if value >= 0 else "red", justify="right")
-    if isinstance(value, int):
-        return Text(f"{value:,}", justify="right")
-    return Text(f"{value:,.2f}", justify="right")
+    change = _is_change(column)
+    if change:
+        text = f"{value:+,.2f}"
+        style = "green" if value >= 0 else "red"
+    else:
+        text = f"{value:,}" if isinstance(value, int) else f"{value:,.2f}"
+        style = ""
+    if spec is not None and spec.colors:
+        # Chartink's own colour rule wins over ours.
+        color = spec.color(flag)
+        style = _rich_color(color) if color else ""
+    return Text(text, style=style, justify="right")
+
+
+def _rich_color(hex_color: str) -> str:
+    # Chartink sends #RRGGBBAA; rich wants #RRGGBB.
+    return hex_color[:7] if len(hex_color) >= 7 else hex_color
 
 
 def band_cell(band: PriceBand | None) -> Text:

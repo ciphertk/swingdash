@@ -11,6 +11,7 @@ _HELP = (
     "Paste any of:\n"
     "  a link   https://chartink.com/screener/...  or  /dashboard/...\n"
     "  a request payload from the browser's network tab (screener/process or widget/process)\n"
+    "  a screener link, then its payload on the next line - names its custom columns\n"
     "  a scan clause  ( {cash} ( ... ) )   or a widget query  select ..."
 )
 
