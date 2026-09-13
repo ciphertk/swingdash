@@ -22,6 +22,7 @@ def test_version_flag(capsys):
         (["-w", "nxtDay"], ["run", "-w", "nxtDay"]),
         (["run", "-s", "TCS"], ["run", "-s", "TCS"]),
         (["doctor", "--feed"], ["doctor", "--feed"]),
+        (["refresh", "--no-sectors"], ["refresh", "--no-sectors"]),
         (["migrate-legacy", "--from", "."], ["migrate-legacy", "--from", "."]),
         (["--help"], ["--help"]),
     ],

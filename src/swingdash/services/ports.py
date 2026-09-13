@@ -15,6 +15,14 @@ from typing import Protocol
 from swingdash.domain.bars import DailyBar, MinuteBar
 from swingdash.domain.calendar import Holiday, Session
 from swingdash.domain.fundamentals import CompanyProfile
+from swingdash.domain.securities import (
+    BandEntry,
+    Etf,
+    Fetched,
+    IndexRow,
+    ListedEquity,
+    Surveillance,
+)
 
 OnTick = Callable[[str, int | None, float | None, float | None], None]
 OnStatus = Callable[[str], None]
@@ -41,6 +49,22 @@ class CalendarSource(Protocol):
 
 class FundamentalsSource(Protocol):
     def company_profile(self, isin: str) -> CompanyProfile: ...
+
+
+class SecuritiesSource(Protocol):
+    """End-of-day NSE reference datasets."""
+
+    def equity_list(self) -> Fetched[list[ListedEquity]]: ...
+
+    def price_bands(self) -> Fetched[list[BandEntry]]: ...
+
+    def surveillance(self, today: dt.date) -> Fetched[dict[str, Surveillance]]: ...
+
+    def etf_list(self) -> Fetched[list[Etf]]: ...
+
+    def indices(self) -> Fetched[list[IndexRow]]: ...
+
+    def close(self) -> None: ...
 
 
 class MarketCalendar(Protocol):

@@ -20,6 +20,7 @@ from swingdash.services.market_data_hub import MarketDataHub
 from swingdash.services.ports import HistorySource
 from swingdash.services.rvol.baselines import BaselineService
 from swingdash.services.rvol.engine import RvolEngine
+from swingdash.services.securities import SecuritiesService
 from swingdash.services.watchlists import WatchlistService
 from swingdash.settings import Settings
 
@@ -36,6 +37,7 @@ class Services:
     fundamentals: FundamentalsService
     baselines: BaselineService
     hub: MarketDataHub
+    securities: SecuritiesService
 
     def new_rvol_engine(self, symbols: list[str]) -> RvolEngine:
         return RvolEngine(
@@ -47,5 +49,7 @@ class Services:
         )
 
     def close(self) -> None:
+        # Background work first, so nothing is mid-write when the DB closes.
+        self.securities.close()
         self.hub.close()
         self.db.close()

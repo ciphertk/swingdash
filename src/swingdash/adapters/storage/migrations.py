@@ -64,9 +64,68 @@ CREATE TABLE IF NOT EXISTS app_state (
 );
 """
 
+# NSE reference data (Securities tab). Each ref_* table is one source
+# dataset, replaced whole on refresh; ref_datasets records when each was
+# last fetched and whether the latest attempt failed.
+_V3_SECURITIES = """
+CREATE TABLE IF NOT EXISTS ref_listings (
+    symbol TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    isin TEXT,
+    listed_on TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ref_bands (
+    symbol TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    band TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ref_surveillance (
+    symbol TEXT PRIMARY KEY,
+    gsm INTEGER,
+    esm INTEGER,
+    ltasm INTEGER,
+    stasm INTEGER,
+    ibc INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS ref_etfs (
+    symbol TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    underlying TEXT NOT NULL,
+    asset_class TEXT NOT NULL,
+    isin TEXT,
+    listed_on TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ref_indices (
+    name TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    last REAL,
+    change_pct REAL,
+    pe REAL,
+    pb REAL,
+    dividend_yield REAL,
+    year_high REAL,
+    year_low REAL,
+    advances INTEGER,
+    declines INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS ref_datasets (
+    name TEXT PRIMARY KEY,
+    as_of TEXT,
+    fetched_at TEXT,
+    rows INTEGER NOT NULL,
+    error TEXT
+);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, _V1_BASELINE_SCHEMA),
     (2, _V2_APP_STATE),
+    (3, _V3_SECURITIES),
 )
 LATEST_VERSION = MIGRATIONS[-1][0]
 

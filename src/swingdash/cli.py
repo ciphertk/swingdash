@@ -6,6 +6,7 @@
     swingdash run -s RELIANCE,TCS    ...on ad-hoc symbols
     swingdash setup                  token, database, instrument list
     swingdash doctor [--feed]        check the installation
+    swingdash refresh [--no-sectors] update NSE stocks, bands, surveillance, ETFs, indices
     swingdash replay [SYMBOL ...]    verify the RVOL maths on a past session
     swingdash migrate-legacy --from PATH
 """
@@ -25,7 +26,7 @@ from pathlib import Path
 
 from swingdash import __version__
 
-_COMMANDS = {"run", "setup", "doctor", "replay", "migrate-legacy"}
+_COMMANDS = {"run", "setup", "doctor", "refresh", "replay", "migrate-legacy"}
 _SMOKE_TEST_KEYS = ["NSE_EQ|INE002A01018", "NSE_EQ|INE467B01029"]  # RELIANCE, TCS
 
 Handler = Callable[[argparse.Namespace, argparse.ArgumentParser], int]
@@ -63,6 +64,14 @@ def _build_parser() -> argparse.ArgumentParser:
     doctor = commands.add_parser("doctor", help="check the installation")
     doctor.add_argument("--feed", action="store_true", help="also open the live feed briefly")
     doctor.set_defaults(handler=_doctor)
+
+    refresh = commands.add_parser(
+        "refresh", help="update the Securities tab's NSE reference data and sectors"
+    )
+    refresh.add_argument(
+        "--no-sectors", action="store_true", help="skip the (slow, paced) Upstox sector backfill"
+    )
+    refresh.set_defaults(handler=_refresh)
 
     replay = commands.add_parser("replay", help="verify RVOL maths against a past session")
     replay.add_argument("symbols", nargs="*", default=["RELIANCE", "TCS", "HDFCBANK"])
@@ -216,6 +225,8 @@ def _doctor(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         paths.equity_instruments.is_file(),
     )
     line("logs", str(paths.log_file), True)
+    if paths.database.is_file():
+        _doctor_securities(paths.database, line)
 
     if token:
         try:
@@ -227,6 +238,96 @@ def _doctor(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             ok = _check_feed(UpstoxClient(settings.require_token), line) and ok
 
     return 0 if ok else 1
+
+
+def _doctor_securities(database: Path, line: Callable[[str, str, bool], None]) -> None:
+    from swingdash.adapters.storage.db import Database
+    from swingdash.adapters.storage.migrations import LATEST_VERSION, schema_version
+    from swingdash.adapters.storage.repos.fundamentals import FundamentalsRepository
+    from swingdash.adapters.storage.repos.securities import SecuritiesRepository
+
+    db = Database(database)
+    try:
+        if schema_version(db) < LATEST_VERSION:
+            return  # reported by the database line; the app migrates on start
+        repo = SecuritiesRepository(db)
+        statuses = repo.statuses()
+        if not statuses:
+            line("securities", "not fetched - run `swingdash refresh`", True)
+            return
+        etfs = {e.symbol for e in repo.etfs()}
+        listings = {x.symbol: x.isin for x in repo.listings()}
+        isins = [listings.get(b.symbol) for b in repo.bands() if b.symbol not in etfs]
+        profiles = FundamentalsRepository(db).read_many(i for i in isins if i)
+        with_sector = sum(1 for profile, _ in profiles.values() if profile.sector)
+    finally:
+        db.close()
+
+    failed = sorted(name for name, s in statuses.items() if s.error)
+    bands = statuses.get("bands")
+    as_of = f"bands as of {bands.as_of:%a %d %b}" if bands and bands.as_of else "no bands"
+    detail = f"{as_of}, {len(isins):,} stocks, sectors {with_sector:,}/{len(isins):,}"
+    if failed:
+        detail += f", last refresh failed: {', '.join(failed)}"
+    line("securities", detail, not failed)
+
+
+def _refresh(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    from swingdash.bootstrap import build_services
+    from swingdash.logging_setup import configure_logging
+    from swingdash.services.securities import RefreshProgress
+    from swingdash.settings import load_settings
+
+    settings = load_settings()
+    configure_logging(settings.paths, settings.upstox_token)
+    include_sectors = not args.no_sectors
+    if include_sectors and not settings.upstox_token:
+        print("sectors: skipped - no Upstox token (run `swingdash setup`)")
+        include_sectors = False
+
+    services = build_services(settings)
+    interactive = sys.stdout.isatty()
+    last_phase = ""
+    last_printed = -1
+
+    def show(progress: RefreshProgress) -> None:
+        nonlocal last_phase, last_printed
+        if progress.phase == "sectors":
+            done, total = progress.sectors_done, progress.sectors_total
+            if interactive:
+                print(f"\rsectors: {done:,}/{total:,} fetched", end="", flush=True)
+            elif done - last_printed >= 100 or done == total:
+                last_printed = done
+                print(f"sectors: {done:,}/{total:,} fetched")
+        elif progress.phase and progress.phase != last_phase:
+            print(f"{progress.phase} ...")
+        last_phase = progress.phase
+
+    try:
+        try:
+            result = services.securities.refresh_blocking(include_sectors, on_progress=show)
+        except KeyboardInterrupt:
+            print()
+            print("stopped - progress is saved; run `swingdash refresh` again to resume")
+            return 130
+        if interactive and include_sectors:
+            print()
+
+        snapshot = services.securities.snapshot()
+        for name, status in sorted(snapshot.datasets.items()):
+            as_of = f"as of {status.as_of:%a %d %b %Y}" if status.as_of else ""
+            if status.error:
+                print(f"  [!!] {name:<13} failed: {status.error}")
+            else:
+                print(f"  [ok] {name:<13} {status.rows:>6,} rows  {as_of}")
+        with_sector = sum(1 for e in snapshot.equities if e.sector)
+        print(
+            f"stocks {len(snapshot.equities):,}  etfs {len(snapshot.etfs):,}  "
+            f"indices {len(snapshot.indices):,}  sectors {with_sector:,}/{len(snapshot.equities):,}"
+        )
+        return 1 if result.error else 0
+    finally:
+        services.close()
 
 
 def _check_feed(client, line: Callable[[str, str, bool], None], timeout: float = 15) -> bool:

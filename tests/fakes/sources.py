@@ -3,9 +3,22 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+from pathlib import Path
 
+from swingdash.adapters.nse import parsers
 from swingdash.domain.bars import DailyBar, MinuteBar
 from swingdash.domain.calendar import IST, Holiday, Session, regular_session
+from swingdash.domain.errors import RateLimitedError
+from swingdash.domain.fundamentals import CompanyProfile
+from swingdash.domain.securities import (
+    BandEntry,
+    Etf,
+    Fetched,
+    IndexRow,
+    ListedEquity,
+    Surveillance,
+)
 
 
 class FakeCalendarSource:
@@ -113,3 +126,80 @@ def minute_bars_for_day(date: dt.date, volumes: dict[int, float]) -> list[Minute
         )
         for minute, volume in sorted(volumes.items())
     ]
+
+
+_NSE_FIXTURES = Path(__file__).parents[1] / "fixtures" / "nse"
+
+
+class FakeSecuritiesSource:
+    """Serves the captured NSE files through the real parsers; datasets can be made to fail."""
+
+    AS_OF = dt.date(2026, 9, 11)
+
+    def __init__(self, failing: set[str] | None = None) -> None:
+        self.failing = failing or set()
+        self.calls: list[str] = []
+        self.closed = False
+
+    def _read(self, name: str) -> str:
+        return (_NSE_FIXTURES / name).read_text(encoding="utf-8")
+
+    def _call(self, dataset: str) -> None:
+        self.calls.append(dataset)
+        if dataset in self.failing:
+            raise ConnectionError(f"{dataset} offline")
+
+    def equity_list(self) -> Fetched[list[ListedEquity]]:
+        self._call("listings")
+        return Fetched(parsers.parse_equity_list(self._read("EQUITY_L.csv")), self.AS_OF)
+
+    def price_bands(self) -> Fetched[list[BandEntry]]:
+        self._call("bands")
+        return Fetched(parsers.parse_price_bands(self._read("sec_list.csv")), self.AS_OF)
+
+    def surveillance(self, today: dt.date) -> Fetched[dict[str, Surveillance]]:
+        self._call("surveillance")
+        stages, as_of = parsers.parse_surveillance_reports(
+            json.loads(self._read("reportASM.json")),
+            json.loads(self._read("reportGSM.json")),
+            json.loads(self._read("reportESM.json")),
+        )
+        return Fetched(stages, as_of)
+
+    def etf_list(self) -> Fetched[list[Etf]]:
+        self._call("etfs")
+        return Fetched(parsers.parse_etf_list(self._read("eq_etfseclist.csv")), self.AS_OF)
+
+    def indices(self) -> Fetched[list[IndexRow]]:
+        self._call("indices")
+        rows, as_of = parsers.parse_all_indices(json.loads(self._read("allIndices.json")))
+        return Fetched(rows, as_of)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class FakeFundamentals:
+    """Sector = "Sector of <ISIN>"; ISINs in `rate_limited_once` answer 429 the first time."""
+
+    def __init__(
+        self,
+        empty: set[str] | None = None,
+        failing: set[str] | None = None,
+        rate_limited_once: set[str] | None = None,
+    ) -> None:
+        self.empty = empty or set()
+        self.failing = failing or set()
+        self.rate_limited_once = set(rate_limited_once or ())
+        self.calls: list[str] = []
+
+    def company_profile(self, isin: str) -> CompanyProfile:
+        self.calls.append(isin)
+        if isin in self.rate_limited_once:
+            self.rate_limited_once.discard(isin)
+            raise RateLimitedError("429")
+        if isin in self.failing:
+            raise ConnectionError("offline")
+        if isin in self.empty:
+            return CompanyProfile(None, None, None)
+        return CompanyProfile(f"Sector of {isin}", 1000.0, None)

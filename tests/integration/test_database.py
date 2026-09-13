@@ -70,3 +70,34 @@ def test_refuses_a_database_from_a_newer_version(db: Database):
     db.connection().execute(f"PRAGMA user_version = {LATEST_VERSION + 1}")
     with pytest.raises(SchemaTooNewError):
         migrate(db)
+
+
+def test_v2_database_gains_the_securities_tables(tmp_path: Path):
+    path = tmp_path / "v2.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO app_state VALUES ('active_watchlist', 'nxtDay');
+        PRAGMA user_version = 2;
+        """
+    )
+    conn.close()
+
+    db = Database(path)
+    try:
+        assert migrate(db) == LATEST_VERSION
+        tables = {
+            r[0]
+            for r in db.connection().execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        assert {
+            "ref_bands",
+            "ref_surveillance",
+            "ref_etfs",
+            "ref_indices",
+            "ref_datasets",
+        } <= tables
+        assert db.connection().execute("SELECT value FROM app_state").fetchone()[0] == "nxtDay"
+    finally:
+        db.close()
