@@ -1,0 +1,24 @@
+LiveRvolTab {
+    height: 1fr;
+}
+
+LiveRvolTab #rvol-table {
+    height: 1fr;
+}
+
+LiveRvolTab #rvol-table > .datatable--cursor {
+    background: $accent 40%;
+}
+
+LiveRvolTab #rvol-status {
+    height: auto;
+    padding: 0 1;
+}
+
+LiveRvolTab #rvol-filter {
+    border: tall $accent;
+}
+
+LiveRvolTab #rvol-filter.hidden {
+    display: none;
+}

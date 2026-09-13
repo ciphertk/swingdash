@@ -5,7 +5,9 @@ service. Tests call `build_services` with fakes for the network seams.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
+from collections.abc import Callable
 from importlib.resources import files
 
 from swingdash.adapters.storage.db import Database
@@ -54,6 +56,7 @@ def build_services(
     calendar_source: CalendarSource | None = None,
     fundamentals_source: FundamentalsSource | None = None,
     feed_factory: FeedFactory | None = None,
+    clock: Callable[[], dt.datetime] | None = None,
 ) -> Services:
     settings.paths.ensure()
     db = Database(settings.paths.database)
@@ -63,7 +66,9 @@ def build_services(
     history = history or UpstoxHistory(client)
 
     calendar = CalendarService(
-        calendar_source or UpstoxCalendarSource(client), SessionRepository(db)
+        calendar_source or UpstoxCalendarSource(client),
+        SessionRepository(db),
+        **({"clock": clock} if clock else {}),
     )
 
     watchlists = WatchlistService(

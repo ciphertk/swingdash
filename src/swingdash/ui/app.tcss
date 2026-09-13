@@ -1,0 +1,43 @@
+Screen {
+    background: $surface;
+}
+
+#topbar {
+    height: 3;
+    padding: 0 1;
+}
+
+#watchlist-bar {
+    width: auto;
+    height: 3;
+}
+
+#watchlist-bar .bar-label {
+    padding: 1 1 0 0;
+    color: $text-muted;
+}
+
+#watchlist-select {
+    width: 34;
+}
+
+#market-badge {
+    width: 1fr;
+    content-align: right middle;
+    padding: 1 0 0 0;
+}
+
+#tabs {
+    height: 1fr;
+}
+
+TabPane {
+    padding: 0;
+}
+
+.tab-error {
+    margin: 1 2;
+    padding: 1 2;
+    border: round $error;
+    color: $error;
+}

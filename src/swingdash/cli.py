@@ -82,10 +82,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     from swingdash.bootstrap import build_services
-    from swingdash.domain.watchlist import parse_symbols_text
+    from swingdash.domain.watchlist import Watchlist, parse_symbols_text
     from swingdash.logging_setup import configure_logging
     from swingdash.settings import load_settings
-    from swingdash.ui.app import RvolApp
+    from swingdash.ui.app import SwingDashApp
 
     settings = load_settings()
     configure_logging(settings.paths, settings.upstox_token)
@@ -102,17 +102,15 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             return 1
 
         if args.symbols:
-            symbols, name = parse_symbols_text(args.symbols), None
+            # Ad-hoc symbols: shown in the tabs, never saved.
+            watchlist = Watchlist("(ad-hoc)", tuple(parse_symbols_text(args.symbols)))
         else:
             watchlist = services.watchlists.initial(args.watchlist)
             if args.watchlist and watchlist is None:
                 saved = [w.name for w in services.watchlists.all()]
                 parser.error(f"no watchlist named {args.watchlist!r}. saved: {saved}")
-            symbols = list(watchlist.symbols) if watchlist else []
-            name = watchlist.name if watchlist else None
 
-        engine = services.new_rvol_engine(symbols)
-        RvolApp(services, engine, watchlist_name=name).run()
+        SwingDashApp(services, initial_watchlist=watchlist).run()
         return 0
     finally:
         services.close()
