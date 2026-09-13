@@ -2,8 +2,12 @@
 
 A terminal dashboard for NSE swing trading, streaming live data from
 Upstox. It opens as a set of tabs sharing one global watchlist and one live
-feed. The first tab is **Live RVOL**: time-of-day normalised, so 10:30 is
-compared against a typical 10:30 rather than a whole day.
+feed.
+
+- **Live RVOL** - time-of-day normalised, so 10:30 is compared against a
+  typical 10:30 rather than a whole day.
+- **Securities** - every NSE EQ stock, index and ETF, with price band and
+  exchange surveillance flags, refreshed on request.
 
 ## Install
 
@@ -50,9 +54,31 @@ time of day. **RVOL-D** compares it with a full average day, like the
 original Pine script; the two converge at the close. Outside market hours
 the table shows the last session's close.
 
+**Securities tab**
+
+| Key | Action |
+|---|---|
+| `v` | switch view: Stocks / Indices / ETFs |
+| `s` / `r` | cycle sort column / reverse |
+| `/` | filter symbol, name or sector (Enter applies, Esc clears) |
+| `b` | cycle price band filter (All / 2% / 5% / 10% / 20% / No Band) |
+| `m` | show only stocks under exchange surveillance |
+| `R` | refresh from NSE (capitalised so it can't fire by accident) |
+| arrows, PgUp/PgDn, Home/End, `g`/`G` | navigate |
+
+This data is end-of-day and doesn't refresh on its own - press `R` in the
+tab, or run `swingdash refresh` from outside the dashboard. NSE's own files
+for a session typically land ~19:50 (price bands) and ~21:00 (surveillance)
+IST that evening, so the tab flags when a refresh is probably stale. The
+first refresh after install also backfills sector and market cap from
+Upstox one call at a time (paced to its rate limit, ~30-45 minutes for the
+whole exchange). It saves progress as it goes, so quitting partway through
+and refreshing again later picks up where it left off.
+
 ## Other commands
 
 ```powershell
+swingdash refresh [--no-sectors]        # update the Securities tab's NSE data (and sector backfill)
 swingdash doctor --feed                 # also opens the live feed briefly
 swingdash replay [SYMBOLS...]           # replays a past session and verifies the RVOL maths
 swingdash migrate-legacy --from PATH    # one-time import from an old checkout's data/ folder
