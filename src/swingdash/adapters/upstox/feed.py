@@ -101,13 +101,16 @@ class UpstoxFeedTransport:
             return
 
         for key, feed in (message.get("feeds") or {}).items():
-            market_ff = (feed.get("fullFeed") or {}).get("marketFF")
-            if not market_ff:
-                continue  # index feeds carry indexFF and have no vtt
-            ltpc = market_ff.get("ltpc") or {}
+            full = feed.get("fullFeed") or {}
+            # Equities arrive as marketFF; indices as indexFF, which has
+            # price but no volume (verified Sep 2026), so vtt is None.
+            payload = full.get("marketFF") or full.get("indexFF")
+            if not payload:
+                continue
+            ltpc = payload.get("ltpc") or {}
             self._on_tick(
                 key,
-                _as_int(market_ff.get("vtt")),
+                _as_int(payload.get("vtt")),
                 _as_float(ltpc.get("ltp")),
                 _as_float(ltpc.get("cp")),
             )

@@ -21,9 +21,8 @@ class UpstoxQuotes:
 
     def ltp(self, instrument_keys: Sequence[str]) -> dict[str, float]:
         """Last traded price per instrument key - also the cheapest token check."""
-        response: Any = self._client.market_quote_v3().get_ltp(
-            instrument_key=",".join(instrument_keys)
-        )
+        api = self._client.market_quote_v3()
+        response: Any = self._client.call(api.get_ltp, instrument_key=",".join(instrument_keys))
         return {
             quote.instrument_token: float(quote.last_price)
             for quote in (response.data or {}).values()
@@ -40,11 +39,14 @@ class UpstoxQuotes:
             return {}
 
         today = dt.datetime.now(IST).date().isoformat()
-        api = self._client.market_quote_v3()
         bars: dict[str, DailyBar] = {}
         for i in range(0, len(instrument_keys), MAX_QUOTE_INSTRUMENTS_PER_REQUEST):
             chunk = instrument_keys[i : i + MAX_QUOTE_INSTRUMENTS_PER_REQUEST]
-            response: Any = api.get_full_market_quote_v3(instrument_key=",".join(chunk))
+            # One accessor per request, so each takes its own rate-limit slot.
+            api = self._client.market_quote_v3()
+            response: Any = self._client.call(
+                api.get_full_market_quote_v3, instrument_key=",".join(chunk)
+            )
             for quote in response.data.values():
                 ohlc = quote.ohlc
                 bars[quote.instrument_token] = DailyBar(

@@ -115,3 +115,40 @@ def mswing_class(stock: MswingValue, index: MswingValue) -> str | None:
     if stock.score is None or index.score is None:
         return None
     return classify_mswing(stock.score, index.score)
+
+
+# --- what the Scanner tab renders ---------------------------------------------
+
+
+@dataclass(frozen=True)
+class ScannerRow:
+    """One rendered row; every field already computed."""
+
+    symbol: str
+    instrument_key: str
+    ltp: float | None
+    change_pct: float | None
+    # None until the symbol's history has loaded.
+    metrics: SymbolMetrics | None
+    history_through: dt.date | None
+    mswing_class: str | None  # strong | neutral | weak, against the index
+    vs_index: float | None  # stock Mswing minus index Mswing
+
+
+@dataclass(frozen=True)
+class ScannerIndex:
+    instrument_key: str
+    name: str
+    metrics: SymbolMetrics | None
+
+
+@dataclass(frozen=True)
+class ScannerSnapshot:
+    rows: tuple[ScannerRow, ...]
+    index: ScannerIndex
+    session_date: dt.date | None
+    session_closed: bool
+    loaded: int  # symbols with history prepared
+    total: int
+    fetching: bool  # history deltas still downloading
+    market_status: str

@@ -48,6 +48,16 @@ class InstrumentService:
         self._ensure_loaded()
         return list(self._indices or [])
 
+    def index_name(self, instrument_key: str) -> str:
+        """Display name for an index key, e.g. 'NSE_INDEX|NIFTY MIDSML 400' -> 'NIFTY MIDSML 400'."""
+        try:
+            for index in self.list_indices():
+                if index["instrument_key"] == instrument_key:
+                    return index.get("trading_symbol") or index.get("name") or instrument_key
+        except InstrumentsUnavailableError:
+            pass
+        return instrument_key.partition("|")[2] or instrument_key
+
     def store(self, equities: list[dict[str, str]], indices: list[dict[str, str]]) -> None:
         """Replace the cached masters (written atomically) and reload."""
         for path, rows in ((self._equities_path, equities), (self._indices_path, indices)):

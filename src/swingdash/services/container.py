@@ -18,8 +18,10 @@ from swingdash.services.fundamentals import FundamentalsService
 from swingdash.services.instruments import InstrumentService
 from swingdash.services.market_data_hub import MarketDataHub
 from swingdash.services.ports import HistorySource
+from swingdash.services.preferences import PreferencesService
 from swingdash.services.rvol.baselines import BaselineService
 from swingdash.services.rvol.engine import RvolEngine
+from swingdash.services.scanner.engine import ScannerEngine
 from swingdash.services.securities import SecuritiesService
 from swingdash.services.watchlists import WatchlistService
 from swingdash.settings import Settings
@@ -38,6 +40,7 @@ class Services:
     baselines: BaselineService
     hub: MarketDataHub
     securities: SecuritiesService
+    preferences: PreferencesService
 
     def new_rvol_engine(self, symbols: list[str]) -> RvolEngine:
         return RvolEngine(
@@ -46,6 +49,18 @@ class Services:
             baselines=self.baselines,
             resolve_key=self.instruments.find_instrument_key,
             hub=self.hub,
+        )
+
+    def new_scanner_engine(self, symbols: list[str]) -> ScannerEngine:
+        index_key = self.preferences.scanner_index()
+        return ScannerEngine(
+            symbols,
+            calendar=self.calendar,
+            candles=self.candles,
+            resolve_key=self.instruments.find_instrument_key,
+            hub=self.hub,
+            index_key=index_key,
+            index_name=self.instruments.index_name(index_key),
         )
 
     def close(self) -> None:

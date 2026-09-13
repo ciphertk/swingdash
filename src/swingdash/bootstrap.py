@@ -42,6 +42,7 @@ from swingdash.services.ports import (
     OnTick,
     SecuritiesSource,
 )
+from swingdash.services.preferences import PreferencesService
 from swingdash.services.rvol.baselines import BaselineService
 from swingdash.services.securities import SecuritiesService
 from swingdash.services.watchlists import WatchlistService
@@ -100,7 +101,7 @@ def build_services(
         instruments=instruments,
         watchlists=watchlists,
         history=history,
-        candles=CandleService(history, CandleRepository(db), calendar.today),
+        candles=CandleService(history, CandleRepository(db), calendar),
         fundamentals=fundamentals,
         baselines=BaselineService(history, BaselineRepository(db), calendar),
         hub=MarketDataHub(feed_factory or upstox_feed),
@@ -111,4 +112,5 @@ def build_services(
             calendar,
             isin_lookup=instruments.find_isin,
         ),
+        preferences=PreferencesService(AppStateRepository(db), settings.mswing_index_key),
     )

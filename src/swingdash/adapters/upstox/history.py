@@ -28,8 +28,14 @@ class UpstoxHistory:
     def daily_candles(
         self, instrument_key: str, from_date: dt.date, to_date: dt.date
     ) -> list[DailyBar]:
-        response: Any = self._client.history_v3().get_historical_candle_data1(
-            instrument_key, "days", 1, to_date.isoformat(), from_date.isoformat()
+        api = self._client.history_v3()
+        response: Any = self._client.call(
+            api.get_historical_candle_data1,
+            instrument_key,
+            "days",
+            1,
+            to_date.isoformat(),
+            from_date.isoformat(),
         )
         return [
             DailyBar(
@@ -52,15 +58,22 @@ class UpstoxHistory:
                 f"minute history range {span}d exceeds Upstox's "
                 f"{self.max_minute_span_days}d cap per call"
             )
-        response: Any = self._client.history_v3().get_historical_candle_data1(
-            instrument_key, "minutes", 1, to_date.isoformat(), from_date.isoformat()
+        api = self._client.history_v3()
+        response: Any = self._client.call(
+            api.get_historical_candle_data1,
+            instrument_key,
+            "minutes",
+            1,
+            to_date.isoformat(),
+            from_date.isoformat(),
         )
         return _to_minute_bars(response.data.candles)
 
     def todays_minute_candles(self, instrument_key: str) -> list[MinuteBar]:
         """The current session's 1-minute candles (the historical endpoint excludes today)."""
-        response: Any = self._client.history_v3().get_intra_day_candle_data(
-            instrument_key, "minutes", 1
+        api = self._client.history_v3()
+        response: Any = self._client.call(
+            api.get_intra_day_candle_data, instrument_key, "minutes", 1
         )
         return _to_minute_bars(response.data.candles)
 

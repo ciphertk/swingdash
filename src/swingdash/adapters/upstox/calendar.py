@@ -17,7 +17,8 @@ class UpstoxCalendarSource:
 
     def exchange_bounds(self, date: dt.date) -> tuple[dt.datetime, dt.datetime] | None:
         """NSE open/close for `date`, or None when NSE doesn't trade that day."""
-        response: Any = self._client.market_calendar().get_exchange_timings(date.isoformat())
+        api = self._client.market_calendar()
+        response: Any = self._client.call(api.get_exchange_timings, date.isoformat())
         for entry in response.data or []:
             if entry.exchange == _EXCHANGE:
                 return (
@@ -27,7 +28,8 @@ class UpstoxCalendarSource:
         return None
 
     def holidays(self) -> list[Holiday]:
-        response: Any = self._client.market_calendar().get_holidays()
+        api = self._client.market_calendar()
+        response: Any = self._client.call(api.get_holidays)
         holidays: list[Holiday] = []
         for entry in response.data or []:
             # The SDK exposes the date only under its mangled attribute name.

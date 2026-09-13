@@ -63,10 +63,19 @@ class FakeHistory:
         self.minute = minute or {}
         self.daily = daily or {}
         self.minute_calls: list[tuple[str, dt.date, dt.date]] = []
+        self.daily_calls: list[tuple[str, dt.date, dt.date]] = []
+        self.failing_daily: set[str] = set()
+        self.rate_limited_daily_once: set[str] = set()
 
     def daily_candles(
         self, instrument_key: str, from_date: dt.date, to_date: dt.date
     ) -> list[DailyBar]:
+        self.daily_calls.append((instrument_key, from_date, to_date))
+        if instrument_key in self.failing_daily:
+            raise ConnectionError("offline")
+        if instrument_key in self.rate_limited_daily_once:
+            self.rate_limited_daily_once.discard(instrument_key)
+            raise RateLimitedError("429")
         return [
             bar
             for bar in self.daily.get(instrument_key, [])

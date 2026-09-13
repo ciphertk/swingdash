@@ -4,13 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from upstox_client.rest import ApiException
-
 from swingdash.adapters.upstox.client import UpstoxClient
-from swingdash.domain.errors import RateLimitedError
 from swingdash.domain.fundamentals import CompanyProfile
-
-_TOO_MANY_REQUESTS = 429
 
 
 class UpstoxFundamentals:
@@ -23,13 +18,10 @@ class UpstoxFundamentals:
         cap - confirmed by comparing two companies in the same sector
         (HDFCBANK, ICICIBANK) and getting two different plausible values.
         An ISIN with no fundamentals comes back empty (sector None, cap 0).
+        Raises RateLimitedError on a 429 (see UpstoxClient.call).
         """
-        try:
-            response: Any = self._client.fundamentals().get_company_profile(isin)
-        except ApiException as exc:
-            if exc.status == _TOO_MANY_REQUESTS:
-                raise RateLimitedError("Upstox fundamentals rate limit") from exc
-            raise
+        api = self._client.fundamentals()
+        response: Any = self._client.call(api.get_company_profile, isin)
         data = response.data
         market_cap = data.sector_market_cap_inr.value if data.sector_market_cap_inr else None
         return CompanyProfile(

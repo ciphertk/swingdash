@@ -20,6 +20,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from swingdash.domain.calendar import Session
+from swingdash.domain.errors import RateLimitedError
 from swingdash.domain.rvol import calc
 from swingdash.domain.rvol.types import Baseline, Snapshot, SymbolRow
 from swingdash.services.market_data_hub import MarketDataHub, Subscription
@@ -38,6 +39,9 @@ MAX_BASELINE_WORKERS = 16
 STALE_AFTER_SECONDS = 120
 
 FLASH_SECONDS = 1.5
+
+# A baseline hit by Upstox's rate limit is retried this many times in all.
+RATE_LIMIT_ATTEMPTS = 5
 
 
 class SymbolState:
@@ -205,7 +209,15 @@ class RvolEngine:
             if state is None:
                 return  # dropped from the watchlist while fetching
             try:
-                built = self._baselines.build(key, session)
+                built = None
+                for attempt in range(RATE_LIMIT_ATTEMPTS):
+                    try:
+                        built = self._baselines.build(key, session)
+                        break
+                    except RateLimitedError:
+                        # The Upstox client already paused every caller; retry after.
+                        if attempt == RATE_LIMIT_ATTEMPTS - 1 or self._stop.is_set():
+                            raise
             except Exception as exc:
                 logger.exception("baseline build failed for %s", state.symbol)
                 self._events.append(f"{state.symbol}: baseline failed ({type(exc).__name__})")
