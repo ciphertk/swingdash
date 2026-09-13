@@ -8,6 +8,8 @@ feed.
   typical 10:30 rather than a whole day.
 - **Securities** - every NSE EQ stock, index and ETF, with price band and
   exchange surveillance flags, refreshed on request.
+- **Scanner** - Burst Power and Mswing for every symbol in the watchlist,
+  ports of the TradingView indicators, with Mswing moving live.
 
 ## Install
 
@@ -90,6 +92,35 @@ first refresh after install also backfills sector and market cap from
 Upstox one call at a time (paced to its rate limit, ~30-45 minutes for the
 whole exchange). It saves progress as it goes, so quitting partway through
 and refreshing again later picks up where it left off.
+
+**Scanner tab**
+
+| Key | Action |
+|---|---|
+| `s` / `r` | cycle sort column / reverse (starts on Mswing, strongest first) |
+| `/` | filter symbols (Enter applies, Esc clears) |
+| `f` | freeze row ordering |
+| `i` | pick the benchmark index Mswing compares against (remembered) |
+| `p` | show / hide the detail panel |
+| arrows, PgUp/PgDn, Home/End, `g`/`G` | navigate |
+
+- **Burst Power** counts close-to-close moves of 5-10%, 10-19% and 19%+
+  over the last 3 years (`count5/5 + count10/2 + count19/0.5`, dot green at
+  15+, yellow at 10+). It counts **completed days only**: today's move joins
+  once the session has closed, never while it's still forming.
+- **Mswing** is 20-day plus 50-day momentum, compared with the benchmark
+  index (NIFTY MIDSML 400 by default): green is positive and beating the
+  index, yellow is positive-but-lagging or negative-but-beating, red is
+  negative and lagging. During market hours it uses the live price as
+  today's close, as TradingView does.
+- The detail panel shows the highlighted symbol's full Burst table (with the
+  latest date for each bucket) and the Mswing breakdown.
+
+The tab reads three years of daily candles from the local cache, so it fills
+in within seconds. The first open of each trading day fetches one day of
+new candles per symbol, paced under Upstox's rate limits - a few hundred
+symbols take a minute or two, with the table usable meanwhile. Opening it
+again later that day makes no API calls.
 
 ## Other commands
 

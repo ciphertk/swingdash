@@ -6,10 +6,11 @@ opened - a pre-trade filter, not an order tool. Built on the Upstox
 Analytics Token, delivered as a multi-tab Textual terminal dashboard. There
 is no web frontend and no HTTP API; don't reintroduce one unless asked.
 
-Tabs today: **Live RVOL** (watchlist tab) and **Securities** (market-wide:
-every NSE EQ stock/index/ETF with price band, surveillance and sector).
-Planned: Burst Score / Mswing (watchlist tabs), FII/DII flows and market
-breadth/MBI (market-wide, likely NSE-sourced like Securities).
+Tabs today: **Live RVOL** (1, watchlist), **Securities** (2, market-wide:
+every NSE EQ stock/index/ETF with price band, surveillance and sector) and
+**Scanner** (3, watchlist: Burst Power and Mswing - the home for further
+per-symbol metrics). Planned: FII/DII flows and market breadth/MBI
+(market-wide, likely NSE-sourced like Securities).
 
 ## Commands
 
@@ -34,7 +35,8 @@ src/swingdash/
   cli.py, bootstrap.py      entry + composition root (only place wiring every layer)
   settings.py               Settings/Paths (platformdirs, SWINGDASH_HOME override)
   logging_setup.py          rotating file log, token redaction, no stdout
-  domain/                   PURE stdlib: bars, calendar, watchlist, securities, rvol/{calc,types,curve}, metrics/*
+  domain/                   PURE stdlib: bars, calendar, watchlist, securities, rvol/*, metrics/*
+    scanner.py              per-symbol prepare (history) / live (price) split + the "today" rule
   adapters/storage/         Database (per-thread conns), migrations, repos/*
   adapters/upstox/          the only home of upstox_client: client, feed, history, quotes, calendar, ...
   adapters/nse/             public NSE archive files + report endpoints (no login, no upstox_client)
@@ -43,6 +45,9 @@ src/swingdash/
     market_data_hub.py      the ONE live feed, shared by every consumer
     rvol/                   engine, baselines, replay
     securities.py           Securities tab's data: NSE datasets + Upstox sector backfill
+    scanner/engine.py       Scanner's live engine: cached history -> prepare, deltas, O(1) snapshots
+    candles.py              daily candle cache; calendar-aware (no call once it has the last session)
+    preferences.py          remembered choices (Scanner benchmark index)
   ui/                       the only place textual is imported
     app.py                  shell: header, tab strip, global watchlist, CRUD actions
     export.py               ExportTable + write_csv - the `x` CSV export shared by every tab
@@ -51,7 +56,8 @@ src/swingdash/
     tabs/base.py            TabBase lifecycle (lazy mount, pause when hidden, error containment)
     tabs/rvol/              LiveRvolTab + tcss (watchlist tab)
     tabs/securities/        SecuritiesTab + views.py (columns/sort/filter per view) + tcss (market-wide)
-    watchlist/, widgets/    header picker/modals, market badge, error panel, shared NavTable
+    tabs/scanner/           ScannerTab + columns.py + detail.py (panel) + index_picker.py (watchlist)
+    watchlist/, widgets/    header picker/modals, market badge, error panel, NavTable, LiveTable
 tests/  fakes/ fixtures/nse/ unit/ integration/ ui/ network/
 docs/pine/                  original TradingView sources the metrics were ported from
 ```
@@ -88,6 +94,19 @@ its `Exports` subfolder). Schema changes go in
   opens a chart via `TabBase`). Scope CSS in the tab's `.tcss`.
 - **Domain is pure, services do I/O.** Metrics take data in and return a
   score; register them in `domain/metrics/registry.py`.
+- **Per-symbol metrics split into prepare and live** (`domain/scanner.py`).
+  `prepare_symbol` walks completed daily history once per session
+  (~1.4ms/symbol); `live_symbol` adds the current price in O(1) at every
+  redraw (~2ms for 450 symbols). A tick only stores a price. Adding a
+  Scanner metric: extend `SymbolContext`/`SymbolMetrics`, compute it in
+  both functions (prove live == recompute-with-the-price-appended, as
+  `tests/unit/test_mswing.py` does), add columns in
+  `ui/tabs/scanner/columns.py` and panel lines in `detail.py`.
+- **"Today" for daily metrics** follows RVOL's rule (active session, never
+  the clock) and is only added when history reaches the previous session -
+  so weekends, holidays and a stale cache never double count or skip a day.
+  Mswing uses the live price as today's close at any time (TradingView's
+  last bar); Burst Power counts today only once the session has closed.
 - Caching tiers stay separate: near-real-time (feed, delta-fetched candle
   cache), daily TTL (fundamentals), manual-only (Securities tab reference
   data - EOD, so refreshed on request, never polled). SQLite is enough for
@@ -101,8 +120,9 @@ its `Exports` subfolder). Schema changes go in
   Adding rows re-measures every cell (~0.5s for ~2,300 rows); reordering
   (`table.sort`) and single-cell updates are ~30ms. Rebuild only when the
   visible row *set* changes (filter, new data); re-sort in place otherwise.
-  See `ui/tabs/securities/pane.py` for the pattern if another tab grows a
-  large table.
+  For live values over many rows use `ui/widgets/live_table.py` (in-place
+  cell updates, reorder via `sort` at most every 2s, never while
+  navigating); for static data see `ui/tabs/securities/pane.py`.
 - **CSV export (`x`) is one mechanism, `ui/export.py`, shared by every tab.**
   `TabBase.action_export_csv` calls the tab's `export_data() -> ExportTable
   | None` and writes it; a tab only supplies its current rows, already
@@ -136,8 +156,20 @@ Verify anything new against the official docs rather than assuming
   (volume traded today). `connect()` is non-blocking. Also pushes a
   `market_info` message with `segmentStatus.NSE_EQ`. Limit 2000 instruments.
 - History V3: 1-minute candles cap at **1 month per call** (we use 28-day
-  spans). Historical endpoints exclude today even after close.
-  Rate limit 50/s, 500/min.
+  spans); daily candles at **1 decade per call** (3 years = one call).
+  Historical endpoints exclude today even after close.
+- **Rate limits: documented 50/s, 500/min, 2000/30min per account - but
+  Upstox's Cloudflare edge is stricter per IP.** Bursts near 40/s on the
+  history endpoint drew 429 "Error 1015: You are being rate limited" for
+  every request from the IP (lifted within ~15 minutes); ~10-12/s is fine.
+  The edge also holds a throttled request ~20s before answering, and the
+  SDK sets no timeout. So **every REST call goes through
+  `UpstoxClient.call`**: shared `RateLimiter` (10/s, 250/min, 1500/30min),
+  a `(10s, 45s)` timeout, and on 429 a 60s pause for all callers plus
+  `RateLimitedError`, which callers retry rather than drop. Don't call SDK
+  API methods directly; don't raise the limiter without re-verifying.
+- Feed: index instruments arrive as `fullFeed.indexFF.ltpc` (ltp, cp, no
+  vtt); equities as `marketFF`. Both reach consumers via the same tick.
 - Quotes: max 500 instrument_keys per call.
 - Holidays: decide "closed" from `NSE in closed_exchanges`, not
   `holiday_type` - settlement holidays and special timings trade normally.
@@ -186,15 +218,28 @@ over the last 20 sessions, built from 1-minute candles.
   previous close. The engine rolls over at the next open.
 - Do not filter high-volume days out of the baseline (it biased RVOL ~12%).
 
-## Ported, not yet in a tab
+## Burst Power and Mswing (the Scanner)
 
-`domain/metrics/burst_score.py`, `mswing.py` (+ `ema.py`) are tested ports
-of the Pine scripts; `services/fundamentals.py` (market cap, sector, plus
-the paced `backfill()` the Securities tab uses) and `services/candles.py`
-(daily candle cache) back them. Still to build: cap classification (SEBI
-rank-based), distance from 52-week high/low, sector strength/rotation
-(the Securities tab's per-stock sector is the input this would aggregate).
-Free float has no confirmed Upstox source.
+Ports of `docs/pine/Burst Power.pine` and `Mswing Homma.pine`, on daily
+candles (3 years, cached in `daily_candles`).
+
+- Burst Power: close-over-close moves 5-10 / 10-19 / 19%+ since a calendar
+  cutoff (today - 3 years; the bar before the cutoff supplies the first
+  day's previous close, as Pine's `close[1]` does). `round(c5/5 + c10/2 +
+  c19/0.5)`; dot green >=15, orange >=10. Pine's "closing within % of highs"
+  filter is off by default and not exposed.
+- Mswing: `momo(20) + momo(50)`, `momo(n) = (close - close[n]) * 100 /
+  close[n] / n`, IPO-adjusted for short histories; classified against the
+  benchmark index (default NIFTY MIDSML 400, user-changeable, stored in
+  app_state). EMA(9) is SMA-seeded; Pine's seed may differ but converges
+  over hundreds of bars.
+
+## Not yet in a tab
+
+Still to build: cap classification (SEBI rank-based), distance from 52-week
+high/low, sector strength/rotation (the Securities tab's per-stock sector is
+the input this would aggregate). Per-symbol ones belong in the Scanner via
+the prepare/live split. Free float has no confirmed Upstox source.
 
 ## Conventions and gotchas
 
