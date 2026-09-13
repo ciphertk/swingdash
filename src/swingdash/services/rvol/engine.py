@@ -22,7 +22,8 @@ from concurrent.futures import ThreadPoolExecutor
 from swingdash.domain.calendar import Session
 from swingdash.domain.rvol import calc
 from swingdash.domain.rvol.types import Baseline, Snapshot, SymbolRow
-from swingdash.services.ports import FeedFactory, MarketCalendar
+from swingdash.services.market_data_hub import MarketDataHub, Subscription
+from swingdash.services.ports import MarketCalendar
 from swingdash.services.rvol.baselines import BaselineService
 
 logger = logging.getLogger(__name__)
@@ -77,10 +78,12 @@ class RvolEngine:
         calendar: MarketCalendar,
         baselines: BaselineService,
         resolve_key: Callable[[str], str | None],
-        feed_factory: FeedFactory,
+        hub: MarketDataHub,
         alert_ratio: float = calc.STRONG_RATIO,
     ) -> None:
         self._calendar = calendar
+        self._hub = hub
+        self._subscription: Subscription | None = None
         self._baselines = baselines
         self._resolve_key = resolve_key
         self._alert_ratio = alert_ratio
@@ -98,12 +101,6 @@ class RvolEngine:
 
         self._states, self._unresolved = self._resolve(symbols, {})
 
-        self._feed = feed_factory(
-            self._on_tick,
-            self._on_status,
-            lambda state: self._events.append(f"feed {state}"),
-        )
-
     # --- lifecycle ---------------------------------------------------------
 
     def start(self) -> None:
@@ -119,7 +116,14 @@ class RvolEngine:
         for key, baseline in cached.items():
             self._states[key].baseline = baseline
 
-        self._feed.start(list(self._states))
+        # Through the shared hub, never a feed of its own: Upstox allows only
+        # two connections per account and other tabs need the same one.
+        self._subscription = self._hub.subscribe(
+            list(self._states),
+            self._on_tick,
+            self._on_status,
+            lambda state: self._events.append(f"feed {state}"),
+        )
         threading.Thread(target=self._minute_ticker, name="rvol-ticker", daemon=True).start()
 
         missing = [k for k, s in self._states.items() if s.baseline is None]
@@ -127,8 +131,10 @@ class RvolEngine:
             self._start_baseline_build(missing)
 
     def stop(self) -> None:
+        """Stops this engine and releases its instruments; the shared feed stays up."""
         self._stop.set()
-        self._feed.stop()
+        if self._subscription is not None:
+            self._subscription.close()
 
     def _resolve(
         self, symbols: list[str], existing: dict[str, SymbolState]
@@ -147,8 +153,8 @@ class RvolEngine:
 
     def set_symbols(self, symbols: list[str]) -> None:
         """
-        Switch symbols on the live connection - unsubscribing what left and
-        subscribing what arrived, rather than reconnecting.
+        Switch symbols on the live connection - the hub unsubscribes what left
+        and subscribes what arrived, rather than reconnecting.
 
         The new state dict is built separately and rebound in one assignment.
         Rebinding is atomic under CPython, so the feed thread always sees the
@@ -162,9 +168,8 @@ class RvolEngine:
         self._unresolved = unresolved
 
         added = set(states) - set(previous)
-        removed = set(previous) - set(states)
-        self._feed.unsubscribe(list(removed))
-        self._feed.subscribe(list(added))
+        if self._subscription is not None:
+            self._subscription.update(list(states))
 
         for symbol in unresolved:
             self._events.append(f"unknown symbol: {symbol}")

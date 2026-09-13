@@ -26,6 +26,7 @@ from swingdash.services.candles import CandleService
 from swingdash.services.container import Services
 from swingdash.services.fundamentals import FundamentalsService
 from swingdash.services.instruments import InstrumentService
+from swingdash.services.market_data_hub import MarketDataHub
 from swingdash.services.ports import (
     CalendarSource,
     FeedFactory,
@@ -89,5 +90,5 @@ def build_services(
             fundamentals_source or UpstoxFundamentals(client), FundamentalsRepository(db)
         ),
         baselines=BaselineService(history, BaselineRepository(db), calendar),
-        feed_factory=feed_factory or upstox_feed,
+        hub=MarketDataHub(feed_factory or upstox_feed),
     )

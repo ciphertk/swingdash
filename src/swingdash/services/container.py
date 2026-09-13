@@ -16,7 +16,8 @@ from swingdash.services.calendar import CalendarService
 from swingdash.services.candles import CandleService
 from swingdash.services.fundamentals import FundamentalsService
 from swingdash.services.instruments import InstrumentService
-from swingdash.services.ports import FeedFactory, HistorySource
+from swingdash.services.market_data_hub import MarketDataHub
+from swingdash.services.ports import HistorySource
 from swingdash.services.rvol.baselines import BaselineService
 from swingdash.services.rvol.engine import RvolEngine
 from swingdash.services.watchlists import WatchlistService
@@ -34,7 +35,7 @@ class Services:
     candles: CandleService
     fundamentals: FundamentalsService
     baselines: BaselineService
-    feed_factory: FeedFactory
+    hub: MarketDataHub
 
     def new_rvol_engine(self, symbols: list[str]) -> RvolEngine:
         return RvolEngine(
@@ -42,8 +43,9 @@ class Services:
             calendar=self.calendar,
             baselines=self.baselines,
             resolve_key=self.instruments.find_instrument_key,
-            feed_factory=self.feed_factory,
+            hub=self.hub,
         )
 
     def close(self) -> None:
+        self.hub.close()
         self.db.close()
