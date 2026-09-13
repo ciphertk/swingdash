@@ -45,10 +45,16 @@ Every tab (each of Securities' views included) also has:
 | Key | Action |
 |---|---|
 | `x` | export the current view to CSV - whatever filter and sort are applied |
+| `o`, or `Enter` on a row | open that row's chart on TradingView, in your default browser |
 
 Exported files land in `%LOCALAPPDATA%\swingdash\Exports`, one per export,
 named after the tab/view and timestamped
 (`live-rvol_2026-09-15_103205.csv`, `securities-stocks_...csv`).
+
+The chart link opens on whatever machine swingdash is running on - if
+you're connected over SSH/remote desktop, that's the remote machine, not
+yours. Indices don't have a chart (an index's name isn't a symbol NSE or
+TradingView trades under).
 
 **Live RVOL tab**
 

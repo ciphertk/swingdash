@@ -46,6 +46,7 @@ src/swingdash/
   ui/                       the only place textual is imported
     app.py                  shell: header, tab strip, global watchlist, CRUD actions
     export.py               ExportTable + write_csv - the `x` CSV export shared by every tab
+    tradingview.py           chart_url/open_chart - the `o`/Enter chart-open shared by every tab
     tabs/registry.py        TABS tuple - adding a tab = one package + one entry
     tabs/base.py            TabBase lifecycle (lazy mount, pause when hidden, error containment)
     tabs/rvol/              LiveRvolTab + tcss (watchlist tab)
@@ -81,8 +82,10 @@ its `Exports` subfolder). Schema changes go in
   leases), built when the second consumer actually appears.
 - **Tabs:** subclass `TabBase`; implement `on_tab_mount`, `refresh_view`,
   `on_watchlist_changed`. Don't define `on_mount`. Tab keys must avoid the
-  app's reserved `1-9 w n e d q ctrl+p`, plus `x` (CSV export, bound once on
-  `TabBase` - see below). Scope CSS in the tab's `.tcss`.
+  app's reserved `1-9 w n e d q ctrl+p`, plus `x` and `o` (CSV export and
+  chart-open, bound once on `TabBase` - see below), and `enter` if the tab
+  uses a `DataTable` (its own `RowSelected`/`select_cursor` binding also
+  opens a chart via `TabBase`). Scope CSS in the tab's `.tcss`.
 - **Domain is pure, services do I/O.** Metrics take data in and return a
   score; register them in `domain/metrics/registry.py`.
 - Caching tiers stay separate: near-real-time (feed, delta-fetched candle
@@ -108,6 +111,17 @@ its `Exports` subfolder). Schema changes go in
   on-screen render used). Values are raw (numbers, ISO dates, joined label
   strings), never the styled `Text` cells the table renders - see
   `views.py`'s `Column.value` vs `Column.sort`/`View.cells`.
+- **Opening a chart (`o`, or Enter/click-again on a row) is the same pattern,
+  `ui/tradingview.py`.** `TabBase.action_open_chart` calls the tab's
+  `chart_symbol() -> str | None` (the NSE symbol under the cursor) and shells
+  out to the OS default browser; `TabBase.on_data_table_row_selected` calls
+  the same action, which is how Enter and a second click on the
+  already-selected row (DataTable's own "select" gesture) also open it - no
+  extra wiring needed as long as the tab's table has `cursor_type="row"`.
+  Return `None` (Securities' Indices view does) where a row's key isn't a
+  real tradable symbol, rather than guessing a chart link that's wrong.
+  Never call `webbrowser.open` directly from a tab - go through this so
+  tests can intercept it (see `tests/ui/conftest.py`'s `opened_urls`).
 
 ## Upstox - verified facts
 

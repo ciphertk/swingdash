@@ -167,6 +167,57 @@ async def test_export_reflects_the_active_subtab(services):
         assert not list(services.settings.paths.exports_dir.glob("securities-stocks_*.csv"))
 
 
+async def test_pressing_o_opens_the_cursor_rows_chart_on_stocks(services, opened_urls):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(160, 40)) as pilot:
+        await _open_with_data(app, pilot)
+        table = _table(app)
+        await until(pilot, lambda: table.row_count == FIXTURE_STOCKS)
+        table.move_cursor(row=0)
+        await pilot.pause()
+        symbol = _symbols(table)[0]
+
+        await pilot.press("o")
+        await pilot.pause()
+
+        assert opened_urls == [f"https://in.tradingview.com/chart/?symbol=NSE%3A{symbol}"]
+
+
+async def test_enter_also_opens_the_chart_on_etfs(services, opened_urls):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(160, 40)) as pilot:
+        await _open_with_data(app, pilot)
+        await until(pilot, lambda: _table(app).row_count == FIXTURE_STOCKS)
+        await pilot.press("v", "v")  # ETFs
+        etfs = _table(app, "etfs")
+        await until(pilot, lambda: etfs.row_count == 3)
+        etfs.move_cursor(row=0)
+        await pilot.pause()
+        symbol = _symbols(etfs)[0]
+
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert opened_urls == [f"https://in.tradingview.com/chart/?symbol=NSE%3A{symbol}"]
+
+
+async def test_indices_have_no_chart_to_open(services, opened_urls):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(160, 40)) as pilot:
+        await _open_with_data(app, pilot)
+        await until(pilot, lambda: _table(app).row_count == FIXTURE_STOCKS)
+        await pilot.press("v")  # Indices
+        indices = _table(app, "indices")
+        await until(pilot, lambda: indices.row_count == 7)
+        indices.move_cursor(row=0)
+        await pilot.pause()
+
+        await pilot.press("o")
+        await pilot.pause()
+
+        assert opened_urls == []
+
+
 async def test_a_failed_dataset_is_reported(services, securities_source):
     securities_source.failing = {"indices"}
     app = SwingDashApp(services, services.watchlists.get("default"))

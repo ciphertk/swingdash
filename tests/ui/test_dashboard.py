@@ -174,6 +174,45 @@ async def test_export_writes_the_current_filtered_and_sorted_rows(services, feed
         assert rows[1][4] == "2.0"  # rvol, raw - not the "2.00x" shown on screen
 
 
+async def test_pressing_o_opens_the_cursor_rows_chart(services, opened_urls):
+    app = SwingDashApp(services, initial_watchlist=services.watchlists.get("default"))
+    async with app.run_test(size=(120, 30)) as pilot:
+        await _until(pilot, lambda: _rvol_tab(app)._table.row_count == 5)
+        _rvol_tab(app)._table.move_cursor(row=0)
+        await pilot.pause()
+        symbol = str(_rvol_tab(app)._table.get_row_at(0)[0]).rstrip("~")
+
+        await pilot.press("o")
+        await pilot.pause()
+
+        assert opened_urls == [f"https://in.tradingview.com/chart/?symbol=NSE%3A{symbol}"]
+
+
+async def test_enter_also_opens_the_cursor_rows_chart(services, opened_urls):
+    app = SwingDashApp(services, initial_watchlist=services.watchlists.get("default"))
+    async with app.run_test(size=(120, 30)) as pilot:
+        await _until(pilot, lambda: _rvol_tab(app)._table.row_count == 5)
+        _rvol_tab(app)._table.move_cursor(row=1)
+        await pilot.pause()
+        symbol = str(_rvol_tab(app)._table.get_row_at(1)[0]).rstrip("~")
+
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert opened_urls == [f"https://in.tradingview.com/chart/?symbol=NSE%3A{symbol}"]
+
+
+async def test_o_notifies_instead_of_opening_a_browser_when_theres_nothing_to_chart(
+    services, opened_urls
+):
+    app = SwingDashApp(services, initial_watchlist=None)
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("o")
+        await pilot.pause()
+        assert opened_urls == []
+
+
 async def test_export_notifies_when_there_is_nothing_to_export(services):
     app = SwingDashApp(services, initial_watchlist=None)
     async with app.run_test(size=(120, 30)) as pilot:

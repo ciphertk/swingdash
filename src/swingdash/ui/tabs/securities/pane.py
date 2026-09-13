@@ -116,6 +116,14 @@ class SecuritiesTab(TabBase):
             rows=view.values(ordered),
         )
 
+    def chart_symbol(self) -> str | None:
+        view = self._view
+        if not view.supports_chart:
+            return None
+        # `view.key` is the trading symbol for Stocks/ETFs, and the cursor
+        # key IS that value - no need to look the row back up.
+        return self._cursor_key(self._table)
+
     # --- actions -------------------------------------------------------------
 
     def action_cycle_view(self) -> None:

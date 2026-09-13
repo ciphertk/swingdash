@@ -13,6 +13,10 @@ base setup always runs exactly once.
 Every tab also gets CSV export (`x`) for free: implement `export_data()` to
 return the current view's rows - filtered and sorted exactly as shown - and
 the base class handles the keybinding, the file and the notification.
+
+Same for opening a row's TradingView chart (`o`, or Enter/click-again on a
+row): implement `chart_symbol()` to return the NSE trading symbol under the
+cursor, or None where a row has no chart (e.g. an index name isn't one).
 """
 
 from __future__ import annotations
@@ -23,10 +27,11 @@ from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.timer import Timer
-from textual.widgets import Static
+from textual.widgets import DataTable, Static
 
 from swingdash.domain.watchlist import Watchlist
 from swingdash.ui.export import ExportTable, write_csv
+from swingdash.ui.tradingview import open_chart
 
 if TYPE_CHECKING:
     from swingdash.services.container import Services
@@ -45,6 +50,7 @@ class TabBase(Vertical):
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("x", "export_csv", "Export CSV"),
+        Binding("o", "open_chart", "Open chart"),
     ]
 
     def __init__(self, *, id: str | None = None) -> None:
@@ -69,6 +75,14 @@ class TabBase(Vertical):
         The data currently on screen for this tab (or its active subtab) -
         filtered and sorted exactly as shown. None means there is nothing to
         export yet.
+        """
+        return None
+
+    def chart_symbol(self) -> str | None:
+        """
+        The NSE trading symbol under the cursor, for TradingView. None if
+        there's no row selected, or this tab/view has nothing chartable
+        (e.g. an index's name isn't a tradable symbol).
         """
         return None
 
@@ -119,6 +133,26 @@ class TabBase(Vertical):
             self.app.notify(f"Export failed: {exc}", severity="error")
             return
         self.app.notify(f"Exported {len(table.rows):,} rows to {path.name}")
+
+    def action_open_chart(self) -> None:
+        symbol = self.chart_symbol()
+        if symbol is None:
+            self.app.notify("No chart for this row.", severity="warning")
+            return
+        try:
+            opened = open_chart(symbol)
+        except Exception as exc:
+            logger.error("opening chart for %s failed", symbol, exc_info=exc)
+            self.app.notify(f"Could not open chart: {exc}", severity="error")
+            return
+        if opened:
+            self.app.notify(f"Opened {symbol} on TradingView")
+        else:
+            self.app.notify(f"No browser available to open {symbol}'s chart", severity="warning")
+
+    def on_data_table_row_selected(self, _event: DataTable.RowSelected) -> None:
+        """Enter, or clicking a row that's already the cursor, opens its chart."""
+        self.action_open_chart()
 
     def _watchlist_changed(self, watchlist: Watchlist | None) -> None:
         if self._failed:

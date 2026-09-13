@@ -47,6 +47,9 @@ class View[R]:
     search_text: Callable[[R], str]
     band: Callable[[R], PriceBand | None] | None = None
     flagged: Callable[[R], bool] | None = None
+    # False when `key` isn't a real NSE trading symbol (an index's name
+    # isn't one) - there is then no TradingView chart to open for a row.
+    supports_chart: bool = True
 
     @property
     def sortable(self) -> tuple[Column[R], ...]:
@@ -121,7 +124,8 @@ def _listed(date: dt.date | None) -> Text:
 
 def _stock_cells(e: Equity) -> tuple[Text, ...]:
     return (
-        Text(e.symbol, style="bold"),
+        # Underlined as a hint it opens a chart (Enter, or 'o').
+        Text(e.symbol, style="bold underline"),
         _plain(e.name),
         _plain(e.sector),
         _number(e.market_cap_cr, "{:,.0f}"),
@@ -152,7 +156,7 @@ def _index_cells(i: IndexRow) -> tuple[Text, ...]:
 
 def _etf_cells(e: Etf) -> tuple[Text, ...]:
     return (
-        Text(e.symbol, style="bold"),
+        Text(e.symbol, style="bold underline"),
         _plain(e.name),
         _plain(e.underlying),
         _plain(e.asset_class.title(), "grey62"),
@@ -251,6 +255,7 @@ INDICES = View[IndexRow](
     key=lambda i: i.name,
     cells=_index_cells,
     search_text=lambda i: f"{i.name} {i.category}".upper(),
+    supports_chart=False,  # an index's name isn't a TradingView symbol
 )
 
 ETFS = View[Etf](

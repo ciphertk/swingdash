@@ -123,6 +123,11 @@ class LiveRvolTab(TabBase):
             rows=[[getattr(rows[key], attr) for attr, _, _, _ in COLUMNS] for key in keys],
         )
 
+    def chart_symbol(self) -> str | None:
+        key = self._cursor_key()
+        row = self._visible_rows().get(key) if key is not None else None
+        return row.symbol if row is not None else None
+
     # --- actions -------------------------------------------------------------
 
     def action_cycle_sort(self) -> None:
@@ -259,7 +264,9 @@ class LiveRvolTab(TabBase):
         self._table.refresh()
 
     def _cells(self, row: SymbolRow) -> tuple[Text, ...]:
-        symbol = Text(row.symbol, style="bold")
+        # Underlined as a hint it opens a chart (Enter, or 'o') - the same
+        # convention as the Securities tab's Stocks/ETFs symbol column.
+        symbol = Text(row.symbol, style="bold underline")
         if row.degraded:
             symbol.append("~", style="yellow")  # thin history, treat with care
         if row.stale:

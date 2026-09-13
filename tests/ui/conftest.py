@@ -32,6 +32,14 @@ FRIDAY = dt.date(2026, 9, 11)
 SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "RAYMOND"]
 
 
+@pytest.fixture(autouse=True)
+def opened_urls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Never actually launch a browser in tests; record what would have opened."""
+    opened: list[str] = []
+    monkeypatch.setattr("webbrowser.open", lambda url, *args, **kwargs: opened.append(url) or True)
+    return opened
+
+
 @pytest.fixture
 def feed() -> FakeFeedFactory:
     return FakeFeedFactory()
