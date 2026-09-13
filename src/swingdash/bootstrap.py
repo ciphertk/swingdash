@@ -10,12 +10,14 @@ import json
 from collections.abc import Callable
 from importlib.resources import files
 
+from swingdash.adapters.chartink.source import ChartinkSource
 from swingdash.adapters.nse.source import NseSecuritiesSource
 from swingdash.adapters.storage.db import Database
 from swingdash.adapters.storage.migrations import migrate
 from swingdash.adapters.storage.repos.app_state import AppStateRepository
 from swingdash.adapters.storage.repos.baselines import BaselineRepository
 from swingdash.adapters.storage.repos.candles import CandleRepository
+from swingdash.adapters.storage.repos.chartink import ChartinkRepository
 from swingdash.adapters.storage.repos.fundamentals import FundamentalsRepository
 from swingdash.adapters.storage.repos.securities import SecuritiesRepository
 from swingdash.adapters.storage.repos.sessions import SessionRepository
@@ -27,12 +29,14 @@ from swingdash.adapters.upstox.fundamentals import UpstoxFundamentals
 from swingdash.adapters.upstox.history import UpstoxHistory
 from swingdash.services.calendar import CalendarService
 from swingdash.services.candles import CandleService
+from swingdash.services.chartink import ChartinkService
 from swingdash.services.container import Services
 from swingdash.services.fundamentals import FundamentalsService
 from swingdash.services.instruments import InstrumentService
 from swingdash.services.market_data_hub import MarketDataHub
 from swingdash.services.ports import (
     CalendarSource,
+    ChartinkSourcePort,
     FeedFactory,
     FeedTransport,
     FundamentalsSource,
@@ -62,6 +66,7 @@ def build_services(
     fundamentals_source: FundamentalsSource | None = None,
     feed_factory: FeedFactory | None = None,
     securities_source: SecuritiesSource | None = None,
+    chartink_source: ChartinkSourcePort | None = None,
     clock: Callable[[], dt.datetime] | None = None,
 ) -> Services:
     settings.paths.ensure()
@@ -93,6 +98,14 @@ def build_services(
     fundamentals = FundamentalsService(
         fundamentals_source or UpstoxFundamentals(client), FundamentalsRepository(db)
     )
+    candles = CandleService(history, CandleRepository(db), calendar)
+    securities = SecuritiesService(
+        securities_source or NseSecuritiesSource(),
+        SecuritiesRepository(db),
+        fundamentals,
+        calendar,
+        isin_lookup=instruments.find_isin,
+    )
 
     return Services(
         settings=settings,
@@ -101,16 +114,18 @@ def build_services(
         instruments=instruments,
         watchlists=watchlists,
         history=history,
-        candles=CandleService(history, CandleRepository(db), calendar),
+        candles=candles,
         fundamentals=fundamentals,
         baselines=BaselineService(history, BaselineRepository(db), calendar),
         hub=MarketDataHub(feed_factory or upstox_feed),
-        securities=SecuritiesService(
-            securities_source or NseSecuritiesSource(),
-            SecuritiesRepository(db),
-            fundamentals,
-            calendar,
-            isin_lookup=instruments.find_isin,
-        ),
+        securities=securities,
         preferences=PreferencesService(AppStateRepository(db), settings.mswing_index_key),
+        chartink=ChartinkService(
+            chartink_source or ChartinkSource(),
+            ChartinkRepository(db),
+            instruments=instruments,
+            securities=securities,
+            candles=candles,
+            calendar=calendar,
+        ),
     )

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from swingdash.adapters.storage.db import Database
 from swingdash.services.calendar import CalendarService
 from swingdash.services.candles import CandleService
+from swingdash.services.chartink import ChartinkService
 from swingdash.services.fundamentals import FundamentalsService
 from swingdash.services.instruments import InstrumentService
 from swingdash.services.market_data_hub import MarketDataHub
@@ -41,6 +42,7 @@ class Services:
     hub: MarketDataHub
     securities: SecuritiesService
     preferences: PreferencesService
+    chartink: ChartinkService
 
     def new_rvol_engine(self, symbols: list[str]) -> RvolEngine:
         return RvolEngine(
@@ -66,5 +68,6 @@ class Services:
     def close(self) -> None:
         # Background work first, so nothing is mid-write when the DB closes.
         self.securities.close()
+        self.chartink.close()
         self.hub.close()
         self.db.close()

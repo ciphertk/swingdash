@@ -3,10 +3,9 @@ ScannerEngine - live Burst Power and Mswing for a watchlist.
 
 Work is split so a redraw costs almost nothing (see domain/scanner.py):
 
-- History (background): each symbol's daily candles are read from the
-  cache and prepared at once, so the table fills in about a second. Then
-  only the symbols whose cache is behind are fetched - one small call each,
-  once per trading day - and re-prepared as they land.
+- History (background, DailyContextLoader): cached daily candles are
+  prepared at once, so the table fills in about a second; only symbols whose
+  cache is behind are fetched, and re-prepared as they land.
 - Ticks (feed thread): two scalar writes, exactly like RvolEngine.
 - snapshot() (UI timer): an O(1) live step per symbol.
 
@@ -18,14 +17,11 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-import queue
 import threading
-import time
 from collections import deque
 from collections.abc import Callable
 
-from swingdash.domain.calendar import MAX_LOOKBACK_DAYS, Session
-from swingdash.domain.errors import RateLimitedError
+from swingdash.domain.calendar import Session
 from swingdash.domain.scanner import (
     ScannerIndex,
     ScannerRow,
@@ -35,27 +31,16 @@ from swingdash.domain.scanner import (
     TodayBar,
     live_symbol,
     mswing_class,
-    prepare_symbol,
 )
 from swingdash.services.candles import CandleService
+from swingdash.services.daily_contexts import ContextJob, DailyContextLoader, session_before
 from swingdash.services.market_data_hub import MarketDataHub, Subscription
 from swingdash.services.ports import MarketCalendar
 
 logger = logging.getLogger(__name__)
 
-# Burst Power looks back 3 years from today and needs the bar before that
-# cutoff; a few extra days cover weekends and holidays at the boundary.
-HISTORY_DAYS = 3 * 366 + 10
-
-# Parallel history fetches. The Upstox adapter's shared rate limiter is what
-# really paces them; this just bounds how many wait at once.
-FETCH_WORKERS = 8
-
 # How often the active session is re-checked, to roll over at the open.
 SESSION_CHECK_SECONDS = 30.0
-
-# Say "rate limited" at most this often, however many fetches it hits.
-RATE_LIMIT_NOTICE_SECONDS = 60.0
 
 
 class _State:
@@ -83,17 +68,13 @@ class ScannerEngine:
         index_name: str,
     ) -> None:
         self._calendar = calendar
-        self._candles = candles
+        self._loader = DailyContextLoader(candles, name="scanner")
         self._resolve_key = resolve_key
         self._hub = hub
         self._subscription: Subscription | None = None
         self._events: deque[str] = deque(maxlen=200)
         self._market_status = "UNKNOWN"
         self._stop = threading.Event()
-        self._jobs: queue.Queue[tuple[_State, dt.date]] = queue.Queue()
-        self._pending = 0
-        self._pending_lock = threading.Lock()
-        self._rate_limited_at = float("-inf")
 
         self._session: Session | None = None
         self._previous_session: dt.date | None = None
@@ -106,15 +87,13 @@ class ScannerEngine:
         for symbol in self._unresolved:
             self._events.append(f"unknown symbol: {symbol}")
         self._subscription = self._hub.subscribe(self._feed_keys(), self._on_tick, self._on_status)
-        for number in range(FETCH_WORKERS):
-            threading.Thread(
-                target=self._fetch_worker, name=f"scanner-fetch-{number}", daemon=True
-            ).start()
+        self._loader.start()
         threading.Thread(target=self._run, name="scanner", daemon=True).start()
 
     def stop(self) -> None:
         """Releases this engine's instruments; the shared feed stays up."""
         self._stop.set()
+        self._loader.stop()
         if self._subscription is not None:
             self._subscription.close()
 
@@ -129,14 +108,16 @@ class ScannerEngine:
             self._events.append(f"unknown symbol: {symbol}")
         added = [state for key, state in states.items() if key not in previous]
         if added and self._session is not None:
-            self._load_async(added, self._session.date)
+            date = self._session.date
+            self._loader.load_async([self._job(s, date) for s in added], date)
 
     def set_index(self, instrument_key: str, name: str) -> None:
         self._index = _State(name, instrument_key)
         if self._subscription is not None:
             self._subscription.update(self._feed_keys())
         if self._session is not None:
-            self._load_async([self._index], self._session.date)
+            date = self._session.date
+            self._loader.load_async([self._job(self._index, date)], date)
 
     @property
     def index_key(self) -> str:
@@ -154,81 +135,25 @@ class ScannerEngine:
                 ):
                     if self._session is not None:
                         self._events.append(f"session {self._session.date} -> {session.date}")
-                    self._previous_session = self._session_before(session.date)
+                    self._previous_session = session_before(self._calendar, session.date)
                     self._session = session
-                    self._load([self._index, *self._states.values()], session.date)
+                    states = [self._index, *self._states.values()]
+                    self._loader.load([self._job(s, session.date) for s in states], session.date)
             except Exception:
                 logger.exception("scanner session check failed")
             self._stop.wait(SESSION_CHECK_SECONDS)
 
-    def _load_async(self, states: list[_State], session_date: dt.date) -> None:
-        threading.Thread(
-            target=self._load, args=(states, session_date), name="scanner-load", daemon=True
-        ).start()
+    def _job(self, state: _State, session_date: dt.date) -> ContextJob:
+        def deliver(context: SymbolContext | None) -> None:
+            state.context = context
 
-    def _load(self, states: list[_State], session_date: dt.date) -> None:
-        # Cache first, so every row shows up quickly - even if stale by a day.
-        for state in states:
-            if self._stop.is_set():
-                return
-            try:
-                bars = self._candles.cached(state.instrument_key, HISTORY_DAYS)
-                if bars:
-                    state.context = prepare_symbol(bars, session_date)
-            except Exception:
-                logger.exception("scanner cache read failed for %s", state.symbol)
-        # Then fetch only what's behind.
-        for state in states:
-            try:
-                current = self._candles.is_current(state.instrument_key)
-            except Exception:
-                current = False
-            if not current:
-                with self._pending_lock:
-                    self._pending += 1
-                self._jobs.put((state, session_date))
+        def wanted() -> bool:
+            # Not dropped from the watchlist, not replaced as the index, and no
+            # session rollover since - old-session work must not land.
+            live = state is self._index or self._states.get(state.instrument_key) is state
+            return live and self._session is not None and self._session.date == session_date
 
-    def _fetch_worker(self) -> None:
-        while not self._stop.is_set():
-            try:
-                state, session_date = self._jobs.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            requeue = False
-            try:
-                if not self._stop.is_set() and self._is_live(state):
-                    bars = self._candles.daily(state.instrument_key, HISTORY_DAYS)
-                    # A rollover while fetching must not land old-session work.
-                    if self._session is not None and self._session.date == session_date:
-                        state.context = prepare_symbol(bars, session_date) if bars else None
-            except RateLimitedError:
-                # The Upstox client has already paused every caller; try again after.
-                requeue = True
-                now = time.monotonic()
-                if now - self._rate_limited_at > RATE_LIMIT_NOTICE_SECONDS:
-                    self._rate_limited_at = now
-                    self._events.append("Upstox rate limit - history paused, retrying")
-            except Exception as exc:
-                logger.warning("history fetch failed for %s", state.symbol, exc_info=True)
-                self._events.append(f"{state.symbol}: history failed ({type(exc).__name__})")
-            finally:
-                if requeue and not self._stop.is_set():
-                    self._jobs.put((state, session_date))
-                else:
-                    with self._pending_lock:
-                        self._pending -= 1
-
-    def _is_live(self, state: _State) -> bool:
-        """Still wanted - not dropped from the watchlist or replaced as the index."""
-        return state is self._index or self._states.get(state.instrument_key) is state
-
-    def _session_before(self, date: dt.date) -> dt.date | None:
-        day = date
-        for _ in range(MAX_LOOKBACK_DAYS):
-            day -= dt.timedelta(days=1)
-            if self._calendar.get_session(day) is not None:
-                return day
-        return None
+        return ContextJob(state.instrument_key, state.symbol, deliver, wanted)
 
     # --- feed callbacks (feed thread) --------------------------------------
 
@@ -294,7 +219,7 @@ class ScannerEngine:
             session_closed=closed,
             loaded=loaded,
             total=len(self._states),
-            fetching=self._pending > 0,
+            fetching=self._loader.pending > 0,
             market_status=self._market_status,
         )
 
@@ -302,7 +227,7 @@ class ScannerEngine:
         out = []
         while self._events:
             out.append(self._events.popleft())
-        return out
+        return out + self._loader.events()
 
     # --- helpers -------------------------------------------------------------
 

@@ -122,10 +122,30 @@ CREATE TABLE IF NOT EXISTS ref_datasets (
 );
 """
 
+# Saved Chartink screeners/widgets (Chartink tab). `collection` groups a
+# dashboard's imported widgets; the last result is kept so reopening the tab
+# shows it without asking Chartink again.
+_V4_CHARTINK = """
+CREATE TABLE IF NOT EXISTS chartink_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    fields_json TEXT NOT NULL,
+    source_url TEXT,
+    collection TEXT,
+    position INTEGER NOT NULL,
+    result_json TEXT,
+    fetched_at TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL
+);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, _V1_BASELINE_SCHEMA),
     (2, _V2_APP_STATE),
     (3, _V3_SECURITIES),
+    (4, _V4_CHARTINK),
 )
 LATEST_VERSION = MIGRATIONS[-1][0]
 

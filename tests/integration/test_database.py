@@ -37,7 +37,14 @@ def test_fresh_database_migrates_to_latest(db: Database):
     tables = {
         r[0] for r in db.connection().execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
-    assert {"watchlists", "rvol_baseline", "market_sessions", "app_state"} <= tables
+    assert {
+        "watchlists",
+        "rvol_baseline",
+        "market_sessions",
+        "app_state",
+        "ref_bands",
+        "chartink_items",
+    } <= tables
 
 
 def test_migrate_is_idempotent(db: Database):

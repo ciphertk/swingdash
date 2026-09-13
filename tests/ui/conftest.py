@@ -20,6 +20,7 @@ from swingdash.domain.calendar import IST
 from swingdash.domain.rvol.types import Baseline
 from swingdash.services.container import Services
 from swingdash.settings import load_settings
+from tests.fakes.chartink import FakeChartinkSource
 from tests.fakes.feed import FakeFeedFactory
 from tests.fakes.sources import (
     FakeCalendarSource,
@@ -64,7 +65,16 @@ def securities_source() -> FakeSecuritiesSource:
 
 
 @pytest.fixture
-def services(feed: FakeFeedFactory, securities_source: FakeSecuritiesSource) -> Iterator[Services]:
+def chartink_source() -> FakeChartinkSource:
+    return FakeChartinkSource()
+
+
+@pytest.fixture
+def services(
+    feed: FakeFeedFactory,
+    securities_source: FakeSecuritiesSource,
+    chartink_source: FakeChartinkSource,
+) -> Iterator[Services]:
     settings = load_settings()
     settings.paths.ensure()
     settings.paths.equity_instruments.write_text(
@@ -90,6 +100,7 @@ def services(feed: FakeFeedFactory, securities_source: FakeSecuritiesSource) -> 
         fundamentals_source=FakeFundamentals(),
         feed_factory=feed,
         securities_source=securities_source,
+        chartink_source=chartink_source,
         clock=lambda: SUNDAY,
     )
     curve = array("d", (1_000 * (m + 1) / 375 for m in range(375)))

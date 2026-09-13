@@ -125,6 +125,22 @@ class ScreenerDef:
         return ChartinkRequest(ChartinkKind.SCREENER, {"scan_clause": self.clause})
 
 
+@dataclass(frozen=True)
+class ChartinkItem:
+    """A saved screener or widget, with its last result."""
+
+    id: int
+    name: str
+    request: ChartinkRequest
+    source_url: str | None
+    # The dashboard an imported widget belongs to; None for standalone items.
+    collection: str | None
+    result: ChartinkResult | None
+    fetched_at: dt.datetime | None
+    # Why the latest run failed; the last good result is kept alongside it.
+    error: str | None = None
+
+
 def parse_user_input(text: str) -> ChartinkRequest | ImportTarget:
     """
     Accepts, in order of precedence:

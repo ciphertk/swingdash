@@ -14,6 +14,7 @@ from typing import Protocol
 
 from swingdash.domain.bars import DailyBar, MinuteBar
 from swingdash.domain.calendar import Holiday, Session
+from swingdash.domain.chartink import ChartinkRequest, ChartinkResult, DashboardDef, ScreenerDef
 from swingdash.domain.fundamentals import CompanyProfile
 from swingdash.domain.securities import (
     BandEntry,
@@ -39,6 +40,18 @@ class HistorySource(Protocol):
     def minute_candles(
         self, instrument_key: str, from_date: dt.date, to_date: dt.date
     ) -> list[MinuteBar]: ...
+
+
+class ChartinkSourcePort(Protocol):
+    """chartink.com screeners, widgets and their pages."""
+
+    def run(self, request: ChartinkRequest, referer: str | None = None) -> ChartinkResult: ...
+
+    def screener(self, url: str) -> ScreenerDef: ...
+
+    def dashboard(self, url: str) -> DashboardDef: ...
+
+    def close(self) -> None: ...
 
 
 class CalendarSource(Protocol):
