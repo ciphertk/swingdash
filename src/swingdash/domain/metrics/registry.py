@@ -46,10 +46,13 @@ METRICS: dict[str, MetricDefinition] = {
     ),
     "burst_score": MetricDefinition(
         id="burst_score",
-        name="Burst Score",
+        name="Burst Power",
         category="price",
         compute=burst_score.compute_burst_score,
-        description="Weighted count of historical big-move-up closing days (5%/10%/19%+ buckets).",
+        description=(
+            "Weighted count of big-move-up closing days over 3 years (5%/10%/19%+ buckets); "
+            "live per-symbol use is in domain/scanner.py."
+        ),
     ),
     "mswing": MetricDefinition(
         id="mswing",
