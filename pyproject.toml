@@ -93,10 +93,10 @@ source_modules = [
 forbidden_modules = ["upstox_client"]
 
 [[tool.importlinter.contracts]]
-name = "Services depend on ports, not concrete Upstox adapters"
+name = "Services depend on ports, not concrete network adapters"
 type = "forbidden"
 source_modules = ["swingdash.services"]
-forbidden_modules = ["swingdash.adapters.upstox"]
+forbidden_modules = ["swingdash.adapters.upstox", "swingdash.adapters.nse"]
 
 [[tool.importlinter.contracts]]
 name = "Textual is only used by the UI"

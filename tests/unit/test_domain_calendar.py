@@ -2,7 +2,7 @@ import datetime as dt
 
 import pytest
 
-from swingdash.domain.calendar import IST, active_session, regular_session
+from swingdash.domain.calendar import IST, active_session, latest_publish_cutoff, regular_session
 
 GANESH_CHATURTHI = dt.date(2026, 9, 14)  # Monday, NSE trading holiday
 
@@ -44,3 +44,16 @@ def test_minute_of_session_bounds():
 
 def test_no_session_within_lookback_returns_none():
     assert active_session(_at(2026, 9, 15, 12, 0), lambda _d: None) is None
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (_at(2026, 9, 11, 21, 29), dt.datetime(2026, 9, 10, 21, 30, tzinfo=IST)),  # Fri, not yet
+        (_at(2026, 9, 11, 21, 31), dt.datetime(2026, 9, 11, 21, 30, tzinfo=IST)),  # Fri, published
+        (_at(2026, 9, 13, 2, 0), dt.datetime(2026, 9, 11, 21, 30, tzinfo=IST)),  # Sunday
+        (_at(2026, 9, 14, 23, 0), dt.datetime(2026, 9, 11, 21, 30, tzinfo=IST)),  # holiday
+    ],
+)
+def test_latest_publish_cutoff_is_the_last_trading_evening(now, expected):
+    assert latest_publish_cutoff(now, _lookup) == expected

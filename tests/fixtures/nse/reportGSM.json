@@ -1,0 +1,142 @@
+[
+ {
+  "companyName": "AGS Transact Technologies Limited",
+  "gsmStage": "LXII",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE583L01014",
+  "survCode": "IBC - Receipt & GSM 0 (62)",
+  "survDesc": "Insolvency and Bankruptcy Code (IBC) - Receipt of Disclosure or Recommenced scrip and GSM stage 0",
+  "symbol": "AGSTRA",
+  "srno": 1
+ },
+ {
+  "companyName": "Ankit Metal & Power Limited",
+  "gsmStage": "LVIII",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE106I01010",
+  "survCode": "IBC I & GSM 0 (58)",
+  "survDesc": "ASM IBC Stage I and GSM Stage 0",
+  "symbol": "ANKITMETAL",
+  "srno": 2
+ },
+ {
+  "companyName": "Aqylon Nexus Limited",
+  "gsmStage": "L",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE416A01051",
+  "survCode": "LTASM I & GSM 0 (50)",
+  "survDesc": "LTASM Stage I and GSM Stage 0",
+  "symbol": "AQYLON",
+  "srno": 3
+ },
+ {
+  "companyName": "Amit Spinning Industries Limited",
+  "gsmStage": "VI",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE988A01026",
+  "survCode": "GSM - VI (6)",
+  "survDesc": "Graded Surveillance Measure - Stage VI",
+  "symbol": "ASIL",
+  "srno": 4
+ },
+ {
+  "companyName": "Balkrishna Paper Mills Limited",
+  "gsmStage": "0",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE875R01011",
+  "survCode": "GSM - 0 (99)",
+  "survDesc": "Shortlisted under Graded Surveillance Measure",
+  "symbol": "BALKRISHNA",
+  "srno": 6
+ },
+ {
+  "companyName": "Blue Chip India Limited",
+  "gsmStage": "III",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE657B01025",
+  "survCode": "GSM - III (3)",
+  "survDesc": "Graded Surveillance Measure - Stage III",
+  "symbol": "BLUECHIP",
+  "srno": 9
+ },
+ {
+  "companyName": "Net Avenue Technologies Limited",
+  "gsmStage": "II",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE518X01015",
+  "survCode": "GSM - II (2)",
+  "survDesc": "Graded Surveillance Measure - Stage II",
+  "symbol": "CBAZAAR",
+  "srno": 11
+ },
+ {
+  "companyName": "CLC Industries Limited",
+  "gsmStage": "LXVI",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE376C01038",
+  "survCode": "GSM IV & IBC - Receipt (66)",
+  "survDesc": "GSM stage IV and Insolvency and Bankruptcy Code (IBC) - Receipt of Disclosure or Recommenced scrip",
+  "symbol": "CLCIND",
+  "srno": 13
+ },
+ {
+  "companyName": "Eurotex Industries and Exports Limited",
+  "gsmStage": "XXXVII",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE022C01012",
+  "survCode": "ESM II & GSM 0 (37)",
+  "survDesc": "ESM Stage II and GSM Stage 0",
+  "symbol": "EUROTEXIND",
+  "srno": 23
+ },
+ {
+  "companyName": "Flexituff Ventures International Limited",
+  "gsmStage": "XXXVI",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE060J01017",
+  "survCode": "ESM I & GSM 0 (36)",
+  "survDesc": "ESM Stage I and GSM Stage 0",
+  "symbol": "FLEXITUFF",
+  "srno": 26
+ },
+ {
+  "companyName": "Morarjee Textiles Limited",
+  "gsmStage": "IV",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE161G01027",
+  "survCode": "GSM - IV (4)",
+  "survDesc": "Graded Surveillance Measure - Stage IV",
+  "symbol": "MORARJEE",
+  "srno": 44
+ },
+ {
+  "companyName": "Next Mediaworks Limited",
+  "gsmStage": "I",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE747B01016",
+  "survCode": "GSM - I (1)",
+  "survDesc": "Graded Surveillance Measure - Stage I",
+  "symbol": "NEXTMEDIA",
+  "srno": 47
+ },
+ {
+  "companyName": "Ortel Communications Limited",
+  "gsmStage": "LXV",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE849L01019",
+  "survCode": "GSM III & IBC - Receipt (65)",
+  "survDesc": "GSM stage III and Insolvency and Bankruptcy Code (IBC) - Receipt of Disclosure or Recommenced scrip",
+  "symbol": "ORTEL",
+  "srno": 48
+ },
+ {
+  "companyName": "Perfect Infraengineers Limited",
+  "gsmStage": "LXII",
+  "gsmTime": "11-Sep-2026 08:13:02",
+  "isin": "INE925S01012",
+  "survCode": "IBC - Receipt & GSM 0 (62)",
+  "survDesc": "Insolvency and Bankruptcy Code (IBC) - Receipt of Disclosure or Recommenced scrip and GSM stage 0",
+  "symbol": "PERFECT",
+  "srno": 50
+ }
+]

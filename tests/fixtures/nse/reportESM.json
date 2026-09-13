@@ -1,0 +1,92 @@
+[
+ {
+  "companyName": "3i Infotech Limited",
+  "esmSurvIndicator": "Stage I",
+  "esmTime": "11-Sep-2026",
+  "isin": "INE748C01038",
+  "survCode": "ESM - I (34)",
+  "survDesc": "Enhanced Surveillance Measure (ESM) - Stage I",
+  "symbol": "3IINFOLTD",
+  "srno": 1
+ },
+ {
+  "companyName": "Aaradhya Disposal Industries Limited",
+  "esmSurvIndicator": "Stage I",
+  "esmTime": "11-Sep-2026",
+  "isin": "INE124401014",
+  "survCode": "ESM - I (34)",
+  "survDesc": "Enhanced Surveillance Measure (ESM) - Stage I",
+  "symbol": "AARADHYA",
+  "srno": 2
+ },
+ {
+  "companyName": "Abm International Limited",
+  "esmSurvIndicator": "Stage II",
+  "esmTime": "11-Sep-2026",
+  "isin": "INE251C01025",
+  "survCode": "ESM - II (35)",
+  "survDesc": "Enhanced Surveillance Measure (ESM) - Stage II",
+  "symbol": "ABMINTLLTD",
+  "srno": 7
+ },
+ {
+  "companyName": "Apsis Aerocom Limited",
+  "esmSurvIndicator": "Stage II",
+  "esmTime": "11-Sep-2026",
+  "isin": "INE1OOJ01011",
+  "survCode": "ESM - II (35)",
+  "survDesc": "Enhanced Surveillance Measure (ESM) - Stage II",
+  "symbol": "APSISAERO",
+  "srno": 19
+ },
+ {
+  "companyName": "The Byke Hospitality Ltd",
+  "esmSurvIndicator": "Stage I",
+  "esmTime": "11-Sep-2026",
+  "isin": "INE319B01014",
+  "survCode": "ESM - I (34)",
+  "survDesc": "Enhanced Surveillance Measure (ESM) - Stage I",
+  "symbol": "BYKE",
+  "srno": 44
+ },
+ {
+  "companyName": "Eurotex Industries And Exports Limited",
+  "esmSurvIndicator": "Stage II",
+  "esmTime": "11-Sep-2026",
+  "isin": "INE022C01012",
+  "survCode": "ESM II & GSM 0 (37)",
+  "survDesc": "ESM Stage II and GSM Stage 0",
+  "symbol": "EUROTEXIND",
+  "srno": 80
+ },
+ {
+  "companyName": "Flexituff Ventures International Limited",
+  "esmSurvIndicator": "Stage I",
+  "esmTime": "11-Sep-2026",
+  "isin": "INE060J01017",
+  "survCode": "ESM I & GSM 0 (36)",
+  "survDesc": "ESM Stage I and GSM Stage 0",
+  "symbol": "FLEXITUFF",
+  "srno": 84
+ },
+ {
+  "companyName": "Sadbhav Infrastructure Project Limited",
+  "esmSurvIndicator": "Stage I",
+  "esmTime": "11-Sep-2026",
+  "isin": "INE764L01010",
+  "survCode": "ESM - I (34)",
+  "survDesc": "Enhanced Surveillance Measure (ESM) - Stage I",
+  "symbol": "SADBHIN",
+  "srno": 206
+ },
+ {
+  "companyName": "Sreeleathers Limited",
+  "esmSurvIndicator": "Stage I",
+  "esmTime": "11-Sep-2026",
+  "isin": "INE099F01013",
+  "survCode": "ESM - I (34)",
+  "survDesc": "Enhanced Surveillance Measure (ESM) - Stage I",
+  "symbol": "SREEL",
+  "srno": 234
+ }
+]

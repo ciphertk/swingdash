@@ -94,3 +94,27 @@ def active_session(
             return session
         day -= dt.timedelta(days=1)
     return None
+
+
+# NSE's end-of-day files for the next session (price bands ~19:50,
+# surveillance ~21:00 IST, observed Sep 2026) are all out by then.
+EOD_PUBLISH_TIME = dt.time(21, 30)
+
+
+def latest_publish_cutoff(
+    now: dt.datetime,
+    session_for: Callable[[dt.date], Session | None],
+    at: dt.time = EOD_PUBLISH_TIME,
+) -> dt.datetime | None:
+    """
+    The most recent moment, at or before `now`, by which a trading day's
+    end-of-day files should have been published. Data fetched before it is
+    probably out of date.
+    """
+    day = now.date()
+    for _ in range(MAX_LOOKBACK_DAYS):
+        cutoff = dt.datetime.combine(day, at, tzinfo=IST)
+        if cutoff <= now and session_for(day) is not None:
+            return cutoff
+        day -= dt.timedelta(days=1)
+    return None

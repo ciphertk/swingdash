@@ -1,0 +1,109 @@
+{
+ "longterm": {
+  "data": [
+   {
+    "asmSurvIndicator": "Stage I",
+    "asmTime": "11-Sep-2026",
+    "companyName": "A2Z Infra Engineering Limited",
+    "isin": "INE619I01012",
+    "series": null,
+    "survCode": "LTASM - I (13)",
+    "survDesc": "Long Term Additional Surveillance Measure (LTASM) - Stage I",
+    "symbol": "A2ZINFRA",
+    "srno": 1
+   },
+   {
+    "asmSurvIndicator": "Stage IV",
+    "asmTime": "11-Sep-2026",
+    "companyName": "Bliss GVS Pharma Limited",
+    "isin": "INE416D01022",
+    "series": null,
+    "survCode": "LTASM - IV (16)",
+    "survDesc": "Long Term Additional Surveillance Measure (LTASM) - Stage IV",
+    "symbol": "BLISSGVS",
+    "srno": 22
+   },
+   {
+    "asmSurvIndicator": "Stage II",
+    "asmTime": "11-Sep-2026",
+    "companyName": "Onix Solar Energy Limited",
+    "isin": "INE173M01012",
+    "series": null,
+    "survCode": "LTASM - II (14)",
+    "survDesc": "Long Term Additional Surveillance Measure (LTASM) - Stage II",
+    "symbol": "ONIXSOLAR",
+    "srno": 87
+   },
+   {
+    "asmSurvIndicator": "Stage I",
+    "asmTime": "11-Sep-2026",
+    "companyName": "TAKE Limited",
+    "isin": "INE142I01023",
+    "series": null,
+    "survCode": "LTASM - I (13)",
+    "survDesc": "Long Term Additional Surveillance Measure (LTASM) - Stage I",
+    "symbol": "TAKE",
+    "srno": 124
+   },
+   {
+    "asmSurvIndicator": "Stage III",
+    "asmTime": "11-Sep-2026",
+    "companyName": "Tribhovandas Bhimji Zaveri Limited",
+    "isin": "INE760L01018",
+    "series": null,
+    "survCode": "LTASM - III (15)",
+    "survDesc": "Long Term Additional Surveillance Measure (LTASM) - Stage III",
+    "symbol": "TBZ",
+    "srno": 126
+   }
+  ]
+ },
+ "shortterm": {
+  "data": [
+   {
+    "asmSurvIndicator": "Stage I",
+    "asmTime": "11-Sep-2026",
+    "companyName": "ABS Marine Services Limited",
+    "isin": "INE0QRV01016",
+    "series": null,
+    "survCode": "STASM - I (11)",
+    "survDesc": "Short Term Additional Surveillance Measure (STASM) - Stage I",
+    "symbol": "ABSMARINE",
+    "srno": 1
+   },
+   {
+    "asmSurvIndicator": "Stage I",
+    "asmTime": "11-Sep-2026",
+    "companyName": "Atal Realtech Limited",
+    "isin": "INE0ALR01029",
+    "series": null,
+    "survCode": "STASM - I (11)",
+    "survDesc": "Short Term Additional Surveillance Measure (STASM) - Stage I",
+    "symbol": "ATALREAL",
+    "srno": 5
+   },
+   {
+    "asmSurvIndicator": "Stage II",
+    "asmTime": "11-Sep-2026",
+    "companyName": "Dhariwalcorp Limited",
+    "isin": "INE0YRN01025",
+    "series": null,
+    "survCode": "STASM - II (12)",
+    "survDesc": "Short Term Additional Surveillance Measure (STASM) - Stage II",
+    "symbol": "DHARIWAL",
+    "srno": 21
+   },
+   {
+    "asmSurvIndicator": "Stage I",
+    "asmTime": "11-Sep-2026",
+    "companyName": "Raymond Limited",
+    "isin": "INE301A01014",
+    "series": null,
+    "survCode": "STASM - I (11)",
+    "survDesc": "Short Term Additional Surveillance Measure (STASM) - Stage I",
+    "symbol": "RAYMOND",
+    "srno": 68
+   }
+  ]
+ }
+}
