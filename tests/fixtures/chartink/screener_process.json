@@ -1,0 +1,53 @@
+{
+ "draw": 1,
+ "recordsTotal": 14,
+ "recordsFiltered": 14,
+ "data": [
+  {
+   "sr": 1,
+   "nsecode": "LT",
+   "name": "Larsen & Toubro Limited",
+   "bsecode": "500510",
+   "close": 3930.7,
+   "per_chg": -0.61,
+   "volume": 1195489
+  },
+  {
+   "sr": 2,
+   "nsecode": "JSWDULUX",
+   "name": "JSW Dulux Ltd",
+   "bsecode": "500710",
+   "close": 3155.1,
+   "per_chg": -0.77,
+   "volume": 31176
+  },
+  {
+   "sr": 3,
+   "nsecode": "TATACOMM",
+   "name": "Tata Communications Limited",
+   "bsecode": "500483",
+   "close": 1761.6,
+   "per_chg": -0.16,
+   "volume": 167102
+  },
+  {
+   "sr": 4,
+   "nsecode": "TECHM",
+   "name": "Tech Mahindra Limited",
+   "bsecode": "532755",
+   "close": 1541,
+   "per_chg": 1,
+   "volume": 2007328
+  },
+  {
+   "sr": 5,
+   "nsecode": "JINDALSTEL",
+   "name": "Jindal Steel Ltd",
+   "bsecode": "532286",
+   "close": 1120.5,
+   "per_chg": -1.45,
+   "volume": 549857
+  }
+ ],
+ "link": "scanlink:239b5af0f81a0f93b3657bcaa51e53be"
+}

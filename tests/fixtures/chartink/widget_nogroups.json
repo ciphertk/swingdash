@@ -1,0 +1,35 @@
+{
+ "metaData": [
+  {
+   "columnAliases": [
+    "%"
+   ],
+   "availableLimit": 1,
+   "maxRows": 1,
+   "isTrend": true,
+   "limit": 1000,
+   "groups": [],
+   "tradeTimes": [
+    1789119840000
+   ],
+   "lastUpdateTime": 1789119840000
+  }
+ ],
+ "groups": [
+  "*no-groups*"
+ ],
+ "time": 9,
+ "groupData": [
+  {
+   "name": "*no-groups*",
+   "results": [
+    {
+     "%": [
+      13.2075
+     ]
+    }
+   ]
+  }
+ ],
+ "baseTime": 30
+}

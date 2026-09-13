@@ -1,0 +1,92 @@
+{
+ "metaData": [
+  {
+   "columnAliases": [
+    "advancespercentage"
+   ],
+   "availableLimit": 26,
+   "maxRows": 1,
+   "isTrend": true,
+   "limit": 1000,
+   "groups": [
+    "sector"
+   ],
+   "tradeTimes": [
+    1789120740000
+   ],
+   "lastUpdateTime": 1789120740000
+  }
+ ],
+ "groups": [
+  "co-working",
+  "aerospace & defence",
+  "healthcare",
+  "telecom-service",
+  "energy",
+  "industrials",
+  "power & utilities",
+  "metals & mining",
+  "transportation",
+  "consumer discretionary",
+  "services",
+  "auto",
+  "textiles",
+  "building materials",
+  "plastic products",
+  "chemicals",
+  "n/a",
+  "fmcg",
+  "telecom",
+  "miscellaneous",
+  "financials",
+  "i.t",
+  "realty",
+  "media",
+  "bank",
+  "indices"
+ ],
+ "time": 19,
+ "groupData": [
+  {
+   "name": "co-working",
+   "results": [
+    {
+     "advancespercentage": [
+      80
+     ]
+    }
+   ]
+  },
+  {
+   "name": "aerospace & defence",
+   "results": [
+    {
+     "advancespercentage": [
+      61.7647
+     ]
+    }
+   ]
+  },
+  {
+   "name": "healthcare",
+   "results": [
+    {
+     "advancespercentage": [
+      50.3067
+     ]
+    }
+   ]
+  },
+  {
+   "name": "telecom-service",
+   "results": [
+    {
+     "advancespercentage": [
+      45.4545
+     ]
+    }
+   ]
+  }
+ ],
+ "baseTime": 30
+}
