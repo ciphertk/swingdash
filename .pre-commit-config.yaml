@@ -19,3 +19,9 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      - id: import-linter
+        name: import-linter (layer contracts)
+        entry: uv run lint-imports
+        language: system
+        types: [python]
+        pass_filenames: false

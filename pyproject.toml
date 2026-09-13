@@ -57,6 +57,52 @@ venvPath = "."
 venv = ".venv"
 # upstox-python-sdk ships no type information.
 reportMissingTypeStubs = false
+# The pure core is small and has no untyped dependencies - hold it to the
+# strictest standard.
+strict = ["src/swingdash/domain"]
+
+[tool.importlinter]
+root_package = "swingdash"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: ui -> services -> adapters -> domain"
+type = "layers"
+layers = [
+    "swingdash.ui",
+    "swingdash.services",
+    "swingdash.adapters",
+    "swingdash.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain is pure (no frameworks, SDKs or I/O libraries)"
+type = "forbidden"
+source_modules = ["swingdash.domain"]
+forbidden_modules = ["textual", "rich", "upstox_client", "requests", "dotenv", "platformdirs"]
+
+[[tool.importlinter.contracts]]
+name = "Only adapters.upstox touches the Upstox SDK"
+type = "forbidden"
+source_modules = [
+    "swingdash.domain",
+    "swingdash.services",
+    "swingdash.ui",
+    "swingdash.adapters.storage",
+]
+forbidden_modules = ["upstox_client"]
+
+[[tool.importlinter.contracts]]
+name = "Services depend on ports, not concrete Upstox adapters"
+type = "forbidden"
+source_modules = ["swingdash.services"]
+forbidden_modules = ["swingdash.adapters.upstox"]
+
+[[tool.importlinter.contracts]]
+name = "Textual is only used by the UI"
+type = "forbidden"
+source_modules = ["swingdash.domain", "swingdash.services", "swingdash.adapters"]
+forbidden_modules = ["textual", "rich"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
