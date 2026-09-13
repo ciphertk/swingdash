@@ -1,0 +1,33 @@
+SecuritiesTab {
+    height: 1fr;
+}
+
+SecuritiesTab #securities-views {
+    height: 1;
+    padding: 0 1;
+}
+
+SecuritiesTab #securities-switcher {
+    height: 1fr;
+}
+
+SecuritiesTab NavTable {
+    height: 1fr;
+}
+
+SecuritiesTab NavTable > .datatable--cursor {
+    background: $accent 40%;
+}
+
+SecuritiesTab #securities-status {
+    height: auto;
+    padding: 0 1;
+}
+
+SecuritiesTab #securities-filter {
+    border: tall $accent;
+}
+
+SecuritiesTab #securities-filter.hidden {
+    display: none;
+}

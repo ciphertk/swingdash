@@ -6,21 +6,11 @@ no Upstox, a fixed Sunday clock.
 from __future__ import annotations
 
 import asyncio
-import datetime as dt
-import json
-from array import array
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import ClassVar
 
-import pytest
 from textual.widgets import Button, Input, TextArea
 
-from swingdash.adapters.storage.repos.baselines import BaselineRepository
-from swingdash.bootstrap import build_services
-from swingdash.domain.calendar import IST
-from swingdash.domain.rvol.types import Baseline
-from swingdash.services.container import Services
-from swingdash.settings import load_settings
 from swingdash.ui.app import SwingDashApp
 from swingdash.ui.commands import DashboardCommands
 from swingdash.ui.tabs.base import TabBase
@@ -28,60 +18,8 @@ from swingdash.ui.tabs.registry import TABS, TabSpec
 from swingdash.ui.tabs.rvol.pane import LiveRvolTab
 from swingdash.ui.watchlist.edit_modal import WatchlistModal
 from swingdash.ui.widgets.error_panel import ErrorPanel
-from tests.fakes.feed import FakeFeedFactory
-from tests.fakes.sources import FakeCalendarSource, FakeHistory
-
-SUNDAY = dt.datetime(2026, 9, 13, 2, 0, tzinfo=IST)
-FRIDAY = dt.date(2026, 9, 11)
-SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "RAYMOND"]
-
-
-def _key(symbol: str) -> str:
-    return f"NSE_EQ|{symbol}"
-
-
-@pytest.fixture
-def feed() -> FakeFeedFactory:
-    return FakeFeedFactory()
-
-
-@pytest.fixture
-def services(feed: FakeFeedFactory) -> Iterator[Services]:
-    settings = load_settings()
-    settings.paths.ensure()
-    settings.paths.equity_instruments.write_text(
-        json.dumps(
-            [
-                {"instrument_key": _key(s), "trading_symbol": s, "name": s, "isin": ""}
-                for s in SYMBOLS
-            ]
-        )
-    )
-    built = build_services(
-        settings,
-        history=FakeHistory(),
-        calendar_source=FakeCalendarSource(),
-        feed_factory=feed,
-        clock=lambda: SUNDAY,
-    )
-    curve = array("d", (1_000 * (m + 1) / 375 for m in range(375)))
-    for symbol in SYMBOLS:
-        BaselineRepository(built.db).save(
-            _key(symbol), FRIDAY, Baseline(curve=curve, avg_full_day_volume=curve[-1], days_used=20)
-        )
-    built.watchlists.save("nxtDay", ["RAYMOND", "SBIN"])
-    yield built
-    built.close()
-
-
-async def _until(pilot, predicate: Callable[[], bool], timeout: float = 5.0) -> None:
-    deadline = asyncio.get_running_loop().time() + timeout
-    while asyncio.get_running_loop().time() < deadline:
-        await pilot.pause()
-        if predicate():
-            return
-        await asyncio.sleep(0.05)
-    raise AssertionError("condition not met in time")
+from tests.ui.helpers import key as _key
+from tests.ui.helpers import until as _until
 
 
 def _rvol_tab(app: SwingDashApp) -> LiveRvolTab:

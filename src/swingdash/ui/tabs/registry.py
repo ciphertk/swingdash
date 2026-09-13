@@ -30,6 +30,18 @@ def _live_rvol() -> TabBase:
     return LiveRvolTab()
 
 
+def _securities() -> TabBase:
+    from swingdash.ui.tabs.securities.pane import SecuritiesTab
+
+    return SecuritiesTab()
+
+
 TABS: tuple[TabSpec, ...] = (
     TabSpec(id="live-rvol", title="Live RVOL", factory=_live_rvol, css_path="tabs/rvol/rvol.tcss"),
+    TabSpec(
+        id="securities",
+        title="Securities",
+        factory=_securities,
+        css_path="tabs/securities/securities.tcss",
+    ),
 )

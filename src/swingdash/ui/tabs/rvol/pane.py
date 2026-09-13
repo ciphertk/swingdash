@@ -28,7 +28,7 @@ from swingdash.domain.rvol.types import Snapshot, SymbolRow
 from swingdash.domain.watchlist import Watchlist
 from swingdash.services.rvol.engine import RvolEngine
 from swingdash.ui.tabs.base import TabBase
-from swingdash.ui.tabs.rvol.table import RvolTable
+from swingdash.ui.widgets.nav_table import NavTable
 
 REORDER_SECONDS = 2.0
 # After a navigation keypress, hold the ordering so the row being read stays put.
@@ -76,14 +76,14 @@ class LiveRvolTab(TabBase):
         self._cursor_follows_symbol = False
 
     def compose(self) -> ComposeResult:
-        yield RvolTable(id="rvol-table", cursor_type="row", zebra_stripes=True)
+        yield NavTable(id="rvol-table", cursor_type="row", zebra_stripes=True)
         yield Input(placeholder="filter symbols...", id="rvol-filter", classes="hidden")
         yield Static(id="rvol-status")
 
     # --- TabBase hooks -------------------------------------------------------
 
     def on_tab_mount(self) -> None:
-        self._table = self.query_one("#rvol-table", RvolTable)
+        self._table = self.query_one("#rvol-table", NavTable)
         self._filter_input = self.query_one("#rvol-filter", Input)
         self._status_line = self.query_one("#rvol-status", Static)
         for _, key, header, width in COLUMNS:

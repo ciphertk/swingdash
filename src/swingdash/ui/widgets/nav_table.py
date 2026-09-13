@@ -1,5 +1,6 @@
 """
-DataTable with navigation suited to a long scanner list.
+DataTable with navigation suited to long vertical lists (scanner rows,
+the securities master).
 
 Stock DataTable binds home/end to horizontal scrolling, which does
 nothing useful on a table that scrolls vertically - the cursor stays put
@@ -13,7 +14,7 @@ from textual.binding import Binding
 from textual.widgets import DataTable
 
 
-class RvolTable(DataTable):
+class NavTable(DataTable):
     BINDINGS = [
         Binding("home", "cursor_first", "Top", show=False),
         Binding("end", "cursor_last", "Bottom", show=False),
