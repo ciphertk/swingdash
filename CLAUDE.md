@@ -177,6 +177,13 @@ Verify anything new against the official docs rather than assuming
 - Feed: index instruments arrive as `fullFeed.indexFF.ltpc` (ltp, cp, no
   vtt); equities as `marketFF`. Both reach consumers via the same tick.
 - Quotes: max 500 instrument_keys per call.
+- Instrument master (`NSE.json.gz`, no token): for `NSE_EQ`,
+  `instrument_type` is the **NSE series**. Stocks under surveillance sit in
+  `BE` (trade-for-trade) - e.g. HFCL, MTARTECH in Sep 2026 - so an EQ-only
+  filter silently dropped them from every lookup (watchlists, Scanner,
+  Chartink `W`). Keep `EQUITY_SERIES` (EQ, BE, BZ, SM, ST) in
+  `adapters/upstox/instruments.py`; the key is ISIN-based, so it survives
+  series changes. The cache refreshes only on `swingdash setup`.
 - Holidays: decide "closed" from `NSE in closed_exchanges`, not
   `holiday_type` - settlement holidays and special timings trade normally.
 - Fundamentals `sector_market_cap_inr` is the company's own market cap
