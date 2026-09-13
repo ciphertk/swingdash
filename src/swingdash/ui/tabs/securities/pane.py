@@ -270,12 +270,13 @@ class SecuritiesTab(TabBase):
         table.refresh()
 
     def _views_text(self, snapshot: SecuritiesSnapshot) -> Text:
+        # The footer's "v View" binding already says how to switch - no need
+        # to repeat it here too.
         text = Text()
         for index, view in enumerate(VIEWS):
             label = f" {view.title} {len(view.rows(snapshot)):,} "
             text.append(label, style="reverse bold" if index == self._view_index else "grey62")
             text.append(" ")
-        text.append("  v switch view", style="grey50")
         return text
 
     def _status_text(self, snapshot: SecuritiesSnapshot) -> Text:
