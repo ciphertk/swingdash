@@ -36,6 +36,12 @@ def _securities() -> TabBase:
     return SecuritiesTab()
 
 
+def _scanner() -> TabBase:
+    from swingdash.ui.tabs.scanner.pane import ScannerTab
+
+    return ScannerTab()
+
+
 TABS: tuple[TabSpec, ...] = (
     TabSpec(id="live-rvol", title="Live RVOL", factory=_live_rvol, css_path="tabs/rvol/rvol.tcss"),
     TabSpec(
@@ -44,4 +50,5 @@ TABS: tuple[TabSpec, ...] = (
         factory=_securities,
         css_path="tabs/securities/securities.tcss",
     ),
+    TabSpec(id="scanner", title="Scanner", factory=_scanner, css_path="tabs/scanner/scanner.tcss"),
 )

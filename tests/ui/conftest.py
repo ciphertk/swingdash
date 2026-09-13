@@ -13,7 +13,9 @@ from collections.abc import Iterator
 import pytest
 
 from swingdash.adapters.storage.repos.baselines import BaselineRepository
+from swingdash.adapters.storage.repos.candles import CandleRepository
 from swingdash.bootstrap import build_services
+from swingdash.domain.bars import DailyBar
 from swingdash.domain.calendar import IST
 from swingdash.domain.rvol.types import Baseline
 from swingdash.services.container import Services
@@ -30,6 +32,17 @@ from tests.ui.helpers import key
 SUNDAY = dt.datetime(2026, 9, 13, 2, 0, tzinfo=IST)
 FRIDAY = dt.date(2026, 9, 11)
 SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "RAYMOND"]
+# The default Mswing benchmark first; a second index to switch to.
+INDEX_KEYS = ("NSE_INDEX|NIFTY MIDSML 400", "NSE_INDEX|NIFTY 50")
+DAILY_DRIFTS = {
+    "RELIANCE": 0.002,
+    "TCS": -0.002,
+    "HDFCBANK": 0.004,
+    "INFY": 0.0,
+    "ICICIBANK": 0.006,
+    "SBIN": -0.004,
+    "RAYMOND": 0.008,
+}
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +75,14 @@ def services(feed: FakeFeedFactory, securities_source: FakeSecuritiesSource) -> 
             ]
         )
     )
+    settings.paths.index_instruments.write_text(
+        json.dumps(
+            [
+                {"instrument_key": k, "trading_symbol": k.split("|")[1], "name": k.split("|")[1]}
+                for k in INDEX_KEYS
+            ]
+        )
+    )
     built = build_services(
         settings,
         history=FakeHistory(),
@@ -77,5 +98,22 @@ def services(feed: FakeFeedFactory, securities_source: FakeSecuritiesSource) -> 
             key(symbol), FRIDAY, Baseline(curve=curve, avg_full_day_volume=curve[-1], days_used=20)
         )
     built.watchlists.save("nxtDay", ["RAYMOND", "SBIN"])
+    # Daily candles through Friday for the Scanner - a steady, distinct trend
+    # each, so its sort order is predictable. Nothing needs fetching.
+    candles = CandleRepository(built.db)
+    for symbol, drift in DAILY_DRIFTS.items():
+        candles.upsert(key(symbol), daily_history(drift))
+    for index_key, drift in zip(INDEX_KEYS, (0.001, 0.003), strict=True):
+        candles.upsert(index_key, daily_history(drift))
     yield built
     built.close()
+
+
+def daily_history(drift: float, through: dt.date = FRIDAY, days: int = 200) -> list[DailyBar]:
+    bars, price, day = [], 100.0, through - dt.timedelta(days=days)
+    while day <= through:
+        if day.weekday() < 5:
+            price *= 1 + drift
+            bars.append(DailyBar(day.isoformat(), price, price * 1.01, price * 0.99, price, 1e5))
+        day += dt.timedelta(days=1)
+    return bars

@@ -1,0 +1,39 @@
+ScannerTab {
+    height: 1fr;
+}
+
+ScannerTab #scanner-table {
+    height: 1fr;
+}
+
+ScannerTab #scanner-table > .datatable--cursor {
+    background: $accent 40%;
+}
+
+ScannerTab #scanner-detail {
+    height: 8;
+    padding: 0 1;
+    border-top: solid $panel-lighten-2;
+}
+
+ScannerTab #scanner-burst {
+    width: 46;
+}
+
+ScannerTab #scanner-mswing {
+    width: 1fr;
+    padding: 1 0 0 2;
+}
+
+ScannerTab #scanner-status {
+    height: auto;
+    padding: 0 1;
+}
+
+ScannerTab #scanner-filter {
+    border: tall $accent;
+}
+
+ScannerTab #scanner-filter.hidden {
+    display: none;
+}
