@@ -10,6 +10,7 @@ anything two tabs need comes from a shared service instead.
 from __future__ import annotations
 
 import logging
+from functools import partial
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
@@ -20,6 +21,7 @@ from textual.widgets import Footer, Header, TabbedContent, TabPane
 
 from swingdash.domain.watchlist import Watchlist, parse_symbols_text
 from swingdash.services.container import Services
+from swingdash.services.watchlists import WatchlistExistsError
 from swingdash.ui.commands import DashboardCommands
 from swingdash.ui.tabs.base import TabBase
 from swingdash.ui.tabs.registry import TABS, TabSpec
@@ -151,7 +153,10 @@ class SwingDashApp(App[None]):
         self._bar.focus_picker()
 
     def action_new_watchlist(self) -> None:
-        self.push_screen(WatchlistModal("New watchlist"), self._save_watchlist)
+        self.push_screen(
+            WatchlistModal("New watchlist", taken_names=self._saved_names()),
+            partial(self._save_watchlist, None),
+        )
 
     def action_edit_watchlist(self) -> None:
         current = self.watchlist
@@ -159,8 +164,15 @@ class SwingDashApp(App[None]):
             self.action_new_watchlist()  # nothing saved selected - editing means creating
             return
         self.push_screen(
-            WatchlistModal(f"Edit '{current.name}'", current.name, "\n".join(current.symbols)),
-            self._save_watchlist,
+            WatchlistModal(
+                f"Edit '{current.name}'",
+                current.name,
+                "\n".join(current.symbols),
+                taken_names=self._saved_names() - {current.name},
+            ),
+            # Remember which list is being edited, so a changed name renames
+            # it instead of saving a second copy beside the original.
+            partial(self._save_watchlist, current.name),
         )
 
     def action_delete_watchlist(self) -> None:
@@ -176,11 +188,21 @@ class SwingDashApp(App[None]):
             self._confirm_delete,
         )
 
-    def _save_watchlist(self, result: tuple[str, str] | None) -> None:
+    def _saved_names(self) -> set[str]:
+        return {w.name for w in self.services.watchlists.all()}
+
+    def _save_watchlist(self, editing: str | None, result: tuple[str, str] | None) -> None:
         if result is None:
             return
         name, text = result
-        self.services.watchlists.save(name, parse_symbols_text(text))
+        try:
+            self.services.watchlists.save(name, parse_symbols_text(text), replacing=editing)
+        except WatchlistExistsError as exc:
+            # The dialog already refuses taken names; this only guards a race.
+            self.notify(str(exc), severity="error")
+            return
+        if editing is not None and editing != name:
+            self.notify(f"Renamed '{editing}' to '{name}'.")
         self._bar.reload()
         self.select_watchlist(name)
 

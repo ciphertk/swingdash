@@ -143,7 +143,12 @@ Verify anything new against the official docs rather than assuming
   `holiday_type` - settlement holidays and special timings trade normally.
 - Fundamentals `sector_market_cap_inr` is the company's own market cap
   despite the name.
-- The `[WinError 6]` printed at exit is SDK teardown noise.
+- Every SDK `ApiClient` starts a `ThreadPool` (a thread per CPU) just for
+  `async_req` calls we never make, and closes it in `__del__` - which printed
+  "Error during ApiClient cleanup: [WinError 6]" at exit on Windows.
+  `adapters/upstox/client.py` swaps in `LazyThreadPool` on import (no threads
+  unless async is used). Don't remove it, and keep all SDK access behind
+  `UpstoxClient` so the swap applies.
 
 ## NSE - verified facts (adapters/nse, Securities tab)
 

@@ -222,6 +222,39 @@ async def test_export_notifies_when_there_is_nothing_to_export(services):
         assert not list(services.settings.paths.exports_dir.glob("*.csv"))
 
 
+async def test_renaming_a_watchlist_in_the_edit_dialog_does_not_leave_a_copy(services):
+    app = SwingDashApp(services, services.watchlists.get("nxtDay"))
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, WatchlistModal)
+        modal.query_one("#name", Input).value = "00nxtDay"
+        modal.query_one("#save", Button).press()
+        await _until(pilot, lambda: app.watchlist is not None and app.watchlist.name == "00nxtDay")
+
+        names = [w.name for w in services.watchlists.all()]
+        assert "00nxtDay" in names and "nxtDay" not in names
+        assert services.watchlists.active_name() == "00nxtDay"
+
+
+async def test_the_edit_dialog_refuses_a_name_another_list_already_has(services):
+    app = SwingDashApp(services, services.watchlists.get("nxtDay"))
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        modal = app.screen
+        modal.query_one("#name", Input).value = "default"
+        modal.query_one("#save", Button).press()
+        await pilot.pause()
+
+        assert app.screen is modal  # stays open so you can pick another name
+        assert services.watchlists.get("nxtDay") is not None
+        assert services.watchlists.get("default").symbols != ("RAYMOND", "SBIN")  # type: ignore[union-attr]
+
+
 async def test_command_palette_offers_watchlists_and_tabs(services):
     app = SwingDashApp(services, services.watchlists.get("default"))
     async with app.run_test(size=(120, 30)) as pilot:

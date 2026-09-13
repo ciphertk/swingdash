@@ -1,9 +1,11 @@
+import pytest
+
 from swingdash.adapters.storage.db import Database
 from swingdash.adapters.storage.repos.app_state import AppStateRepository
 from swingdash.adapters.storage.repos.watchlists import WatchlistRepository
 from swingdash.bootstrap import default_watchlist_symbols
 from swingdash.domain.watchlist import DEFAULT_WATCHLIST_NAME, Watchlist
-from swingdash.services.watchlists import WatchlistService
+from swingdash.services.watchlists import WatchlistExistsError, WatchlistService
 
 
 def _service(db: Database) -> WatchlistService:
@@ -57,3 +59,63 @@ def test_deleting_the_active_list_clears_it(db: Database):
 
 def test_packaged_seed_is_readable():
     assert default_watchlist_symbols()
+
+
+def test_renaming_while_editing_replaces_the_list_instead_of_copying_it(db: Database):
+    """Editing 'nxtDay' and saving as '00nxtDay' used to leave both behind."""
+    service = _service(db)
+    service.save("nxtDay", ["RAYMOND"])
+    service.set_active("nxtDay")
+
+    service.save("00nxtDay", ["RAYMOND", "SBIN"], replacing="nxtDay")
+
+    assert [w.name for w in service.all()] == ["00nxtDay"]
+    assert service.get("00nxtDay") == Watchlist("00nxtDay", ("RAYMOND", "SBIN"))
+    assert service.active_name() == "00nxtDay"
+
+
+def test_renaming_persists_across_a_restart(db: Database, tmp_path):
+    service = _service(db)
+    service.save("nxtDay", ["RAYMOND"])
+    service.save("00nxtDay", ["RAYMOND"], replacing="nxtDay")
+    db.close()
+
+    reopened = Database(db.path)
+    try:
+        assert [w.name for w in _service(reopened).all()] == ["00nxtDay"]
+    finally:
+        reopened.close()
+
+
+def test_editing_without_renaming_updates_in_place(db: Database):
+    service = _service(db)
+    service.save("W01", ["SBIN"])
+    service.save("W01", ["SBIN", "TCS"], replacing="W01")
+    assert service.all() == [Watchlist("W01", ("SBIN", "TCS"))]
+
+
+def test_a_name_that_belongs_to_another_list_is_refused(db: Database):
+    service = _service(db)
+    service.save("W01", ["SBIN"])
+    service.save("nxtDay", ["RAYMOND"])
+
+    with pytest.raises(WatchlistExistsError):
+        service.save("W01", ["TCS"])  # new list reusing a name
+    with pytest.raises(WatchlistExistsError):
+        service.save("W01", ["RAYMOND"], replacing="nxtDay")  # rename onto it
+
+    assert service.get("W01") == Watchlist("W01", ("SBIN",))
+    assert service.get("nxtDay") == Watchlist("nxtDay", ("RAYMOND",))
+
+
+def test_deleting_persists_across_a_restart(db: Database):
+    service = _service(db)
+    service.save("nxtDay", ["RAYMOND"])
+    service.delete("nxtDay")
+    db.close()
+
+    reopened = Database(db.path)
+    try:
+        assert _service(reopened).all() == []
+    finally:
+        reopened.close()

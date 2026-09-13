@@ -17,6 +17,12 @@ _ACTIVE_KEY = "active_watchlist"
 _SEEDED_KEY = "watchlists_seeded"
 
 
+class WatchlistExistsError(ValueError):
+    def __init__(self, name: str) -> None:
+        super().__init__(f"A watchlist named '{name}' already exists.")
+        self.name = name
+
+
 class WatchlistService:
     def __init__(
         self,
@@ -34,9 +40,22 @@ class WatchlistService:
     def get(self, name: str) -> Watchlist | None:
         return self._repo.get(name)
 
-    def save(self, name: str, symbols: Sequence[str]) -> Watchlist:
+    def save(self, name: str, symbols: Sequence[str], *, replacing: str | None = None) -> Watchlist:
+        """
+        Create or update a list. `replacing` is the list being edited: if the
+        name changed, this is a rename - the old list goes, and it stays the
+        active one under its new name.
+
+        Raises WatchlistExistsError rather than silently overwriting a
+        different list that already has `name`.
+        """
+        renaming = replacing is not None and replacing != name
+        if (replacing is None or renaming) and self._repo.get(name) is not None:
+            raise WatchlistExistsError(name)
         watchlist = Watchlist(name=name, symbols=tuple(symbols))
-        self._repo.save(watchlist)
+        self._repo.save(watchlist, replacing=replacing if renaming else None)
+        if renaming and self.active_name() == replacing:
+            self._state.set(_ACTIVE_KEY, name)
         return watchlist
 
     def delete(self, name: str) -> bool:

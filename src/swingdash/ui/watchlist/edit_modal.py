@@ -9,6 +9,8 @@ normalising.
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
@@ -33,11 +35,19 @@ class WatchlistModal(ModalScreen[tuple[str, str] | None]):
     #buttons Button { margin-left: 1; }
     """
 
-    def __init__(self, title: str, name: str = "", symbols_text: str = "") -> None:
+    def __init__(
+        self,
+        title: str,
+        name: str = "",
+        symbols_text: str = "",
+        taken_names: Collection[str] = (),
+    ) -> None:
         super().__init__()
         self._title = title
         self._name = name
         self._symbols_text = symbols_text
+        # Names of OTHER saved lists: saving under one would overwrite it.
+        self._taken_names = frozenset(taken_names)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
@@ -79,4 +89,11 @@ class WatchlistModal(ModalScreen[tuple[str, str] | None]):
         if not name or not text.strip():
             self.query_one("#name", Input).focus()
             return  # nothing useful to save; keep the dialog open
+        if name in self._taken_names:
+            self.notify(
+                f"A watchlist named '{name}' already exists - pick another name.",
+                severity="error",
+            )
+            self.query_one("#name", Input).focus()
+            return
         self.dismiss((name, text))

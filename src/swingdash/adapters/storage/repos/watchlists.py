@@ -30,8 +30,14 @@ class WatchlistRepository:
     def count(self) -> int:
         return int(self._db.connection().execute("SELECT COUNT(*) FROM watchlists").fetchone()[0])
 
-    def save(self, watchlist: Watchlist) -> None:
+    def save(self, watchlist: Watchlist, replacing: str | None = None) -> None:
+        """
+        Insert or update `watchlist`. With `replacing` (a rename), the old row
+        goes in the same transaction, so a crash can't leave both behind.
+        """
         with self._db.transaction() as conn:
+            if replacing is not None and replacing != watchlist.name:
+                conn.execute("DELETE FROM watchlists WHERE name = ?", (replacing,))
             conn.execute(
                 """
                 INSERT INTO watchlists (name, symbols_json, updated_at) VALUES (?, ?, ?)
