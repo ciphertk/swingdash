@@ -42,6 +42,12 @@ def _scanner() -> TabBase:
     return ScannerTab()
 
 
+def _chartink() -> TabBase:
+    from swingdash.ui.tabs.chartink.pane import ChartinkTab
+
+    return ChartinkTab()
+
+
 TABS: tuple[TabSpec, ...] = (
     TabSpec(id="live-rvol", title="Live RVOL", factory=_live_rvol, css_path="tabs/rvol/rvol.tcss"),
     TabSpec(
@@ -51,4 +57,7 @@ TABS: tuple[TabSpec, ...] = (
         css_path="tabs/securities/securities.tcss",
     ),
     TabSpec(id="scanner", title="Scanner", factory=_scanner, css_path="tabs/scanner/scanner.tcss"),
+    TabSpec(
+        id="chartink", title="Chartink", factory=_chartink, css_path="tabs/chartink/chartink.tcss"
+    ),
 )

@@ -149,6 +149,11 @@ class SwingDashApp(App[None]):
         self.services.watchlists.set_active(watchlist.name if watchlist else None)
         self.watchlist = watchlist
 
+    def show_watchlist(self, name: str) -> None:
+        """A tab saved a watchlist: list it in the picker and make it active."""
+        self._bar.reload()
+        self.select_watchlist(name)
+
     def action_focus_watchlist(self) -> None:
         self._bar.focus_picker()
 

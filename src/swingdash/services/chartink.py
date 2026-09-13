@@ -172,9 +172,15 @@ class ChartinkService:
         self._repo.rename(item_id, name.strip() or "Untitled")
         self._changed()
 
-    def rename_collection(self, old: str, new: str) -> None:
-        self._repo.rename_collection(old, self._unique_collection(new.strip() or old))
+    def rename_collection(self, old: str, new: str) -> str:
+        """Returns the name actually used ("X (2)" if another dashboard is called X)."""
+        wanted = new.strip() or old
+        if wanted == old:
+            return old
+        name = self._unique_collection(wanted)
+        self._repo.rename_collection(old, name)
         self._changed()
+        return name
 
     def delete(self, item_id: int) -> None:
         self._repo.delete(item_id)

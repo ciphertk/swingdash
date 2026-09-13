@@ -1,0 +1,45 @@
+ChartinkTab {
+    height: 1fr;
+}
+
+ChartinkTab #chartink-body {
+    height: 1fr;
+}
+
+ChartinkTab #chartink-tree {
+    width: 38;
+    height: 1fr;
+    padding: 0 1;
+    border-right: solid $panel-lighten-2;
+}
+
+ChartinkTab #chartink-results {
+    width: 1fr;
+    height: 1fr;
+}
+
+ChartinkTab #chartink-header {
+    height: auto;
+    padding: 0 1;
+}
+
+ChartinkTab #chartink-table {
+    height: 1fr;
+}
+
+ChartinkTab #chartink-table > .datatable--cursor {
+    background: $accent 40%;
+}
+
+ChartinkTab #chartink-status {
+    height: auto;
+    padding: 0 1;
+}
+
+ChartinkTab #chartink-filter {
+    border: tall $accent;
+}
+
+ChartinkTab #chartink-filter.hidden {
+    display: none;
+}
