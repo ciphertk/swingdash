@@ -13,3 +13,11 @@ data/*.db-wal
 
 # Textual screenshots (saved from the running TUI)
 Live_RVOL_*.svg
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.pyright/
+build/
+dist/
+*.egg-info/

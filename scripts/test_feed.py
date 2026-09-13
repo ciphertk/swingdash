@@ -17,16 +17,18 @@ the main thing being proven here; ticks only flow 09:15-15:30 IST on a
 trading day, though a snapshot of the last session often arrives on
 subscribe.
 """
+
+import contextlib
 import json
 import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import upstox_client
 
-from app.upstox_client_wrapper import get_api_client
+from swingdash.upstox_client_wrapper import get_api_client
 
 # Two liquid names - most likely to tick if the market happens to be open.
 _TEST_KEYS = ["NSE_EQ|INE002A01018", "NSE_EQ|INE467B01029"]  # RELIANCE, TCS
@@ -76,7 +78,9 @@ def _print_feeds(message):
         intervals = sorted({o.get("interval") for o in ohlc_entries if o.get("interval")})
         print(f"   {key}")
         print(f"      vtt (volume traded today) = {market_ff.get('vtt')!r}")
-        print(f"      ltp={ltpc.get('ltp')!r}  prev_close(cp)={ltpc.get('cp')!r}  atp={market_ff.get('atp')!r}")
+        print(
+            f"      ltp={ltpc.get('ltp')!r}  prev_close(cp)={ltpc.get('cp')!r}  atp={market_ff.get('atp')!r}"
+        )
         print(f"      marketOHLC intervals present = {intervals} ({len(ohlc_entries)} entries)")
         if not market_ff:
             print(f"      (no marketFF - feed keys: {list(feed.keys())})")
@@ -113,10 +117,8 @@ def main() -> None:
     else:
         print("\n   FAIL - see error above.")
 
-    try:
+    with contextlib.suppress(Exception):
         streamer.disconnect()
-    except Exception:
-        pass
 
 
 if __name__ == "__main__":

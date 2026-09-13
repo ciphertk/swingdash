@@ -16,20 +16,21 @@ Three assertions:
   3. Day RVOL matches the legacy engines/rvol.compute_rvol on daily bars,
      so the streaming path agrees with the original Pine port.
 """
+
 import datetime as dt
 import sys
 from collections import defaultdict
 from itertools import accumulate
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from app.engines import rvol as legacy_rvol
-from app.live import baseline as bl
-from app.live import rvol_calc
-from app.live.session import IST, get_session
-from app.services import ingestion_service
-from app.services.instrument_service import find_instrument_key
+from swingdash.engines import rvol as legacy_rvol
+from swingdash.live import baseline as bl
+from swingdash.live import rvol_calc
+from swingdash.live.session import IST, get_session
+from swingdash.services import ingestion_service
+from swingdash.services.instrument_service import find_instrument_key
 
 DEFAULT_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK"]
 TOLERANCE_PCT = 2.0
@@ -57,8 +58,8 @@ def replay(symbol: str) -> bool:
         return False
 
     dates = sorted(by_date)
-    target_date = dates[-1]                      # replay the most recent session
-    baseline_dates = dates[:-1]                  # baseline from everything before it
+    target_date = dates[-1]  # replay the most recent session
+    baseline_dates = dates[:-1]  # baseline from everything before it
 
     session = get_session(target_date)
     if session is None:
@@ -72,7 +73,7 @@ def replay(symbol: str) -> bool:
         return False
 
     # --- 1. identity ------------------------------------------------------
-    day_totals = [sum(b.volume for b in by_date[d]) for d in baseline_dates[-baseline.days_used:]]
+    day_totals = [sum(b.volume for b in by_date[d]) for d in baseline_dates[-baseline.days_used :]]
     avg_daily = sum(day_totals) / len(day_totals)
     identity_diff = abs(baseline.avg_full_day_volume - avg_daily) / avg_daily * 100
 
@@ -102,11 +103,21 @@ def replay(symbol: str) -> bool:
     print(f"  [1] identity diff      {identity_diff:>13.2f}%  {_verdict(identity_diff)}")
     print(f"  session volume         {cumulative[last]:>14,.0f}")
     print(f"  [2] intraday @close    {final_intraday:>13.4f}x")
-    print(f"      day      @close    {final_day:>13.4f}x   converge: {_verdict(abs(final_intraday-final_day)*100)}")
-    print(f"  [3] legacy engine      {legacy_ratio:>13.4f}x   diff {legacy_diff:.2f}%  {_verdict(legacy_diff)}")
+    print(
+        f"      day      @close    {final_day:>13.4f}x   converge: {_verdict(abs(final_intraday - final_day) * 100)}"
+    )
+    print(
+        f"  [3] legacy engine      {legacy_ratio:>13.4f}x   diff {legacy_diff:.2f}%  {_verdict(legacy_diff)}"
+    )
 
     print("  intraday RVOL through the day:")
-    for label, minute in [("09:45", 30), ("10:30", 75), ("12:00", 165), ("14:00", 285), ("close", last)]:
+    for label, minute in [
+        ("09:45", 30),
+        ("10:30", 75),
+        ("12:00", 165),
+        ("14:00", 285),
+        ("close", last),
+    ]:
         ratio = rvol_calc.rvol_intraday(int(cumulative[minute]), baseline, minute)
         pct_done = cumulative[minute] / cumulative[last] * 100
         print(f"     {label:>5}  {ratio:6.2f}x   ({pct_done:5.1f}% of the day's volume done)")

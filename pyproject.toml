@@ -1,0 +1,66 @@
+[project]
+name = "swingdash"
+version = "0.1.0"
+description = "Terminal dashboard for NSE swing trading, built on the Upstox API"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Tanay Khobragade" }]
+dependencies = [
+    "upstox-python-sdk>=2.18.0",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.0",
+    "textual>=8.2.0",
+]
+
+[project.scripts]
+swingdash = "swingdash.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/swingdash"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "pyright>=1.1.390",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "pre-commit>=4.0",
+    "import-linter>=2.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E501",    # the formatter owns line length; long strings/comments are fine
+    "SIM108",  # a forced ternary is often less readable than if/else
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Textual declares BINDINGS/CSS as plain class attributes by design.
+"src/swingdash/tui/**" = ["RUF012"]
+"src/swingdash/ui/**" = ["RUF012"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+# upstox-python-sdk ships no type information.
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["network: needs network access and an Upstox token (deselected by default)"]
+addopts = "-m 'not network'"

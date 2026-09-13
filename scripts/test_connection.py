@@ -20,6 +20,7 @@ What it does:
 If this script runs clean, your token and network path are both good and
 you're ready to build the ingestion service on top of it.
 """
+
 import gzip
 import json
 import sys
@@ -28,17 +29,17 @@ from pathlib import Path
 import requests
 from upstox_client.rest import ApiException
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from app.config import INDEX_CACHE_PATH, INSTRUMENT_CACHE_PATH, NSE_INSTRUMENTS_URL
-from app.upstox_client_wrapper import market_quote_v3_api
+from swingdash.config import INDEX_CACHE_PATH, INSTRUMENT_CACHE_PATH, NSE_INSTRUMENTS_URL
+from swingdash.upstox_client_wrapper import market_quote_v3_api
 
 # RELIANCE's instrument key - stable, well-known, good for a smoke test.
 _TEST_INSTRUMENT_KEY = "NSE_EQ|INE002A01018"
 
 
 def check_token() -> None:
-    print(f"1. Verifying Analytics Token against GET /v3/market-quote/ltp ...")
+    print("1. Verifying Analytics Token against GET /v3/market-quote/ltp ...")
     try:
         response = market_quote_v3_api().get_ltp(instrument_key=_TEST_INSTRUMENT_KEY)
     except ApiException as e:
