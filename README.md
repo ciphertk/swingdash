@@ -10,6 +10,8 @@ feed.
   exchange surveillance flags, refreshed on request.
 - **Scanner** - Burst Power and Mswing for every symbol in the watchlist,
   ports of the TradingView indicators, with Mswing moving live.
+- **Chartink** - your Chartink screeners and dashboard widgets, saved and
+  run with one key, with price band and Burst Power added to stock lists.
 
 ## Install
 
@@ -121,6 +123,50 @@ in within seconds. The first open of each trading day fetches one day of
 new candles per symbol, paced under Upstox's rate limits - a few hundred
 symbols take a minute or two, with the table usable meanwhile. Opening it
 again later that day makes no API calls.
+
+**Chartink tab**
+
+| Key | Action |
+|---|---|
+| `a` | add: paste a chartink.com screener or dashboard link, a request payload, or a scan clause |
+| `R` | run the highlighted screener/widget - or every widget of a highlighted dashboard |
+| `W` | save the result's NSE symbols as a watchlist (and make it the active one) |
+| `m` / `D` | rename / delete (only in swingdash - nothing changes on Chartink) |
+| `s` / `r` | cycle sort column (starts in Chartink's order) / reverse |
+| `/` | filter rows (Enter applies, Esc clears) |
+| `Tab` | move between the list and the results |
+
+What `a` accepts:
+
+- **A screener link** (`https://chartink.com/screener/consolidatedbo`) -
+  swingdash reads the scan clause from the page. Works for public screeners.
+- **A dashboard link** (`https://chartink.com/dashboard/130216`) - pick
+  which widgets to import (tables are preselected); they're grouped under
+  the dashboard's name. Chart widgets come in as a table of their latest
+  values.
+- **A request payload** - in the browser's DevTools, Network tab, run the
+  screener/widget and copy the payload of `screener/process` or
+  `widget/process`, in any of its forms ("view source", "view parsed", or a
+  Python dict like `{'scan_clause': '...'}`). This is the way to use
+  **private** screeners/dashboards and screeners with **custom columns**
+  (they travel in the payload; a link brings only the scan clause).
+- **A bare clause** - `( {cash} ( ... ) )` for a screener, `select ...`
+  for a widget.
+
+Things to know:
+
+- Nothing is fetched until you press `a` or `R`, and results are saved, so
+  reopening the dashboard shows the last results without asking Chartink.
+  A dashboard's widgets run one after another, at least a second apart.
+- Chartink has no public API; swingdash replays the same requests its
+  website makes, without logging in (it never stores Chartink credentials
+  or cookies). So data is Chartink's free, delayed data (~5 minutes), and
+  if Chartink changes its site the tab reports an error rather than wrong
+  numbers. Keep it personal and low-volume.
+- **BAND** comes from the Securities tab's data (press `R` there once);
+  **BURST** uses the same 3-year daily history as the Scanner, with
+  Chartink's `close` as today's price - symbols not cached yet fetch it once.
+  Rows grouped by sector/industry, and BSE-only rows, have neither.
 
 ## Other commands
 

@@ -7,10 +7,12 @@ Analytics Token, delivered as a multi-tab Textual terminal dashboard. There
 is no web frontend and no HTTP API; don't reintroduce one unless asked.
 
 Tabs today: **Live RVOL** (1, watchlist), **Securities** (2, market-wide:
-every NSE EQ stock/index/ETF with price band, surveillance and sector) and
+every NSE EQ stock/index/ETF with price band, surveillance and sector),
 **Scanner** (3, watchlist: Burst Power and Mswing - the home for further
-per-symbol metrics). Planned: FII/DII flows and market breadth/MBI
-(market-wide, likely NSE-sourced like Securities).
+per-symbol metrics) and **Chartink** (4, saved Chartink screeners and
+dashboard widgets, with band and Burst Power added to stock lists).
+Planned: FII/DII flows and market breadth/MBI (market-wide, likely
+NSE-sourced like Securities).
 
 ## Commands
 
@@ -40,6 +42,7 @@ src/swingdash/
   adapters/storage/         Database (per-thread conns), migrations, repos/*
   adapters/upstox/          the only home of upstox_client: client, feed, history, quotes, calendar, ...
   adapters/nse/             public NSE archive files + report endpoints (no login, no upstox_client)
+  adapters/chartink/        http (CSRF session, pacing), parsers (responses, pages), source
   services/                 orchestration, threads, caches; ports.py = Protocols at test seams
     container.py            frozen Services DI container (built by bootstrap.build_services)
     market_data_hub.py      the ONE live feed, shared by every consumer
@@ -47,6 +50,8 @@ src/swingdash/
     securities.py           Securities tab's data: NSE datasets + Upstox sector backfill
     scanner/engine.py       Scanner's live engine: cached history -> prepare, deltas, O(1) snapshots
     candles.py              daily candle cache; calendar-aware (no call once it has the last session)
+    daily_contexts.py       DailyContextLoader: cache-first prepare + paced delta fetches (Scanner, Chartink)
+    chartink.py             saved items, sequential run queue, band/Burst enrichment
     preferences.py          remembered choices (Scanner benchmark index)
   ui/                       the only place textual is imported
     app.py                  shell: header, tab strip, global watchlist, CRUD actions
@@ -57,14 +62,15 @@ src/swingdash/
     tabs/rvol/              LiveRvolTab + tcss (watchlist tab)
     tabs/securities/        SecuritiesTab + views.py (columns/sort/filter per view) + tcss (market-wide)
     tabs/scanner/           ScannerTab + columns.py + detail.py (panel) + index_picker.py (watchlist)
+    tabs/chartink/          ChartinkTab (tree + results) + cells.py + add_modal + dashboard_picker
     watchlist/, widgets/    header picker/modals, market badge, error panel, NavTable, LiveTable
-tests/  fakes/ fixtures/nse/ unit/ integration/ ui/ network/
+tests/  fakes/ fixtures/{nse,chartink}/ unit/ integration/ ui/ network/
 docs/pine/                  original TradingView sources the metrics were ported from
 ```
 
 `ui -> services -> adapters -> domain` is enforced by import-linter
 contracts in `pyproject.toml` (also: domain has no frameworks/SDKs/I/O,
-services depend on `ports.py` not concrete Upstox adapters). If a contract
+services depend on `ports.py`, not concrete Upstox/NSE/Chartink adapters). If a contract
 breaks, fix the design - don't loosen the contract.
 
 User data never lives in the repo: DB/token/logs/instrument cache/CSV
@@ -204,6 +210,37 @@ required or the CDN 403s. Verified Sep 2026:
   meaning "not applicable" (e.g. fixed-income indices have no P/E) - treat
   0 as `None`, not a real value.
 
+## Chartink - verified facts (adapters/chartink, Chartink tab)
+
+No public API: we replay the website's own requests, anonymously. Verified
+13 Sep 2026 with read-only probes; `robots.txt` disallows nothing.
+
+- **Session:** GET any page -> `<meta name="csrf-token">` plus cookies; POST
+  with header `x-csrf-token` and a browser User-Agent. A stale token gives
+  **419** `{"message":"CSRF token mismatch."}` - `ChartinkHttp` refetches the
+  token once and retries. 403/429/503 mean Cloudflare/rate limiting.
+- **Screener:** `POST /screener/process` form `scan_clause` (the site also
+  sends `debug_clause`, optionally `column_clause` for custom columns) ->
+  `{data:[{sr, nsecode, name, bsecode, close, per_chg, volume, ...}]}`.
+  `nsecode` is empty for BSE-only rows. The exact `column_clause` format is
+  **not yet verified** against a real custom-column payload.
+- **Widget:** `POST /widget/process` form `query` (`select ... GROUP BY ...`),
+  `use_live=1`, `limit`, `size` -> `{metaData:[{columnAliases, groups,
+  lastUpdateTime(ms), availableLimit}], groupData:[{name, results:[{alias:
+  [values...]}]}]}`. The last value of each series is the latest; we force
+  `size=1`. `limit=1000` is honoured. `groups` is `["symbol"]`, a
+  sector/industry/marketcapname grouping, or empty (one `*no-groups*` row).
+- **Pages:** a dashboard page embeds `:dashboard` (`id, name, is_private`)
+  and `:widgets` (the dashboard's own; `jsondetails.resultType` = table /
+  barchart / areachart). Ignore `:template-widgets` - Chartink's starter set
+  on every page. A screener page embeds `:scan-json` whose `atlas_query` is
+  the ready scan clause. Private ones don't render for anonymous users.
+- **Data** is Chartink's free tier: delayed ~5 minutes.
+- **Rules we keep:** on demand only (never poll), requests serialised and
+  >= 1s apart, `(10, 30)` timeouts, no Chartink credentials or cookies
+  stored. A layout change should fail loudly in the parsers
+  (`ChartinkFormatError`), confined to the tab.
+
 ## RVOL (the metric in production)
 
 Baseline `curve[m]` = average cumulative volume at minute-of-session `m`
@@ -251,6 +288,10 @@ the prepare/live split. Free float has no confirmed Upstox source.
   (`_log`, `_ready` bit us - check `dir(App)`); a focused Input swallows
   printable keys so bindings can't fire while typing; Input messages bubble
   up from modals (check `event.input.id`); `Select.BLANK` is `False` while
-  blanks arrive as `NoSelection` (guard on type).
+  blanks arrive as `NoSelection` (guard on type). `Tree.clear()` doesn't
+  reset `cursor_node`: after rebuilding, read `tree.last_line` (lays out
+  lines), then `move_cursor(None)` before `move_cursor(node)` - see
+  `ChartinkTab._move_tree_cursor`. Tree labels given as `str` are markup;
+  pass `Text` for user-supplied names.
 - Watchlist paste strips exchange prefixes (`NSE:RAYMOND` -> `RAYMOND`).
 - Pyright is strict on `domain/`; SDK responses are typed `Any` on purpose.
