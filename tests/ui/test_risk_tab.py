@@ -54,7 +54,7 @@ async def _size(app: SwingDashApp, pilot, symbol: str = "RAYMOND") -> None:
 
 
 def _choose(app: SwingDashApp, radio_set_id: str, index: int) -> None:
-    list(app.query_one(f"#{radio_set_id}", RadioSet).query(RadioButton))[index].value = True
+    list(app.screen.query_one(f"#{radio_set_id}", RadioSet).query(RadioButton))[index].value = True
 
 
 async def test_asks_for_capital_first_and_settings_persist(services: Services):
@@ -152,9 +152,12 @@ async def test_take_edit_close_and_delete_positions(services: Services):
         await pilot.press("ctrl+t")
         await until(pilot, lambda: isinstance(app.screen, PositionModal))
         assert app.screen.query_one("#quantity", Input).value == str(quantity)
+        assert app.screen.query_one("#taken-on", Input).value == "13-09-2026"  # today
+        app.screen.query_one("#taken-on", Input).value = "10-09-2026"
         await pilot.click("#confirm")
         await until(pilot, lambda: _table(app).row_count == 1)
         assert _rows(app)[0][0] == "RAYMOND"
+        assert _rows(app)[0][-2:] == ["10 Sep 26", "3"]  # taken, days held
         assert "1 open" in _text(app, "risk-summary")
         assert services.risk.portfolio().summary.heat > 0
 
@@ -172,6 +175,7 @@ async def test_take_edit_close_and_delete_positions(services: Services):
         await pilot.press("C")
         await until(pilot, lambda: isinstance(app.screen, ClosePositionModal))
         app.screen.query_one("#exit", Input).value = f"{entry + 10:.2f}"
+        app.screen.query_one("#exited-on", Input).value = "12-09-2026"
         await pilot.click("#confirm")
         await until(pilot, lambda: _table(app).row_count == 0)
         assert services.risk.portfolio().summary.realised_pnl == pytest.approx(quantity * 10)
@@ -179,6 +183,8 @@ async def test_take_edit_close_and_delete_positions(services: Services):
         await pilot.press("h")
         await until(pilot, lambda: _table(app).row_count == 1)
         assert "Closed positions (1)" in _text(app, "risk-table-title")
+        closed_row = _rows(app)[0]
+        assert closed_row[-3:] == ["10 Sep 26", "12 Sep 26", "2"]  # taken, exited, days
 
         await pilot.press("D")
         await until(pilot, lambda: isinstance(app.screen, ConfirmModal))
@@ -217,3 +223,47 @@ async def test_export_and_chart(services: Services, opened_urls):
             rows = list(csv.reader(handle))
         assert rows[0][:5] == ["SYMBOL", "QTY", "ENTRY", "STOP", "LTP"]
         assert rows[1][:4] == ["SBIN", "100", "60.0", "55.0"]
+
+
+async def test_a_bad_date_is_explained_in_the_dialog(services: Services):
+    _with_capital(services)
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(150, 45)) as pilot:
+        await _open(app, pilot)
+        await _size(app, pilot)
+        await pilot.press("ctrl+t")
+        await until(pilot, lambda: isinstance(app.screen, PositionModal))
+        app.screen.query_one("#taken-on", Input).value = "last tuesday"
+        await pilot.click("#confirm")
+        await pilot.pause()
+        assert isinstance(app.screen, PositionModal)
+        assert "DD-MM-YYYY" in str(app.screen.query_one("#form-error").render())
+
+
+async def test_broker_choice_changes_the_charges(services: Services):
+    _with_capital(services)
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(150, 50)) as pilot:
+        await _open(app, pilot)
+        await _size(app, pilot)
+        assert "Upstox charges" in _text(app, "risk-result")
+
+        await pilot.click("#risk-settings")
+        await until(pilot, lambda: isinstance(app.screen, RiskSettingsModal))
+        _choose(app, "broker", 1)  # Dhan
+        await pilot.pause()
+        await pilot.click("#confirm")
+        await until(pilot, lambda: "Dhan charges" in _text(app, "risk-result"))
+        assert "Dhan charges" in _text(app, "risk-summary")
+        assert services.risk.settings.broker.value == "dhan"
+
+
+async def test_quote_price_is_labelled(services: Services, quotes):
+    _with_capital(services)
+    quotes.prices = {"NSE_EQ|RAYMOND": 301.25}
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(150, 45)) as pilot:
+        await _open(app, pilot)
+        app.query_one("#risk-symbol", Input).value = "RAYMOND"
+        await until(pilot, lambda: "301.25 LTP at" in _text(app, "risk-quote"))
+        await until(pilot, lambda: app.query_one("#risk-entry", Input).value == "301.25")

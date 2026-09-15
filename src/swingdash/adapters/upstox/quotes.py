@@ -20,13 +20,20 @@ class UpstoxQuotes:
         self._client = client
 
     def ltp(self, instrument_keys: Sequence[str]) -> dict[str, float]:
-        """Last traded price per instrument key - also the cheapest token check."""
-        api = self._client.market_quote_v3()
-        response: Any = self._client.call(api.get_ltp, instrument_key=",".join(instrument_keys))
-        return {
-            quote.instrument_token: float(quote.last_price)
-            for quote in (response.data or {}).values()
-        }
+        """
+        Last traded price per instrument key - also the cheapest token check.
+        After the close it's the day's last trade, which history (up to
+        yesterday) can't give.
+        """
+        prices: dict[str, float] = {}
+        for i in range(0, len(instrument_keys), MAX_QUOTE_INSTRUMENTS_PER_REQUEST):
+            chunk = instrument_keys[i : i + MAX_QUOTE_INSTRUMENTS_PER_REQUEST]
+            api = self._client.market_quote_v3()
+            response: Any = self._client.call(api.get_ltp, instrument_key=",".join(chunk))
+            for quote in (response.data or {}).values():
+                if quote.last_price is not None:
+                    prices[quote.instrument_token] = float(quote.last_price)
+        return prices
 
     def live_bars(self, instrument_keys: Sequence[str]) -> dict[str, DailyBar]:
         """

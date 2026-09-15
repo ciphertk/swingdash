@@ -54,6 +54,12 @@ class ChartinkSourcePort(Protocol):
     def close(self) -> None: ...
 
 
+class QuoteSource(Protocol):
+    def ltp(self, instrument_keys: Sequence[str]) -> dict[str, float]:
+        """Last traded price per instrument key (today's, after the close too)."""
+        ...
+
+
 class CalendarSource(Protocol):
     def exchange_bounds(self, date: dt.date) -> tuple[dt.datetime, dt.datetime] | None: ...
 

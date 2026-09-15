@@ -8,6 +8,7 @@ import logging
 from dataclasses import dataclass
 
 from swingdash.adapters.storage.repos.app_state import AppStateRepository
+from swingdash.domain.risk.charges import SCHEDULES, Broker, ChargeSchedule
 from swingdash.domain.risk.sizing import RiskMode, RiskSpec
 
 logger = logging.getLogger(__name__)
@@ -27,11 +28,16 @@ class RiskSettings:
     atr_multiple: float = 1.5
     low_sessions: int = 10
     liquidity_warn_pct: float = 1.0
+    broker: Broker = Broker.UPSTOX  # whose delivery charges go into the risk
 
     @property
     def risk(self) -> RiskSpec:
         value = self.risk_percent if self.risk_mode is RiskMode.PERCENT else self.risk_amount
         return RiskSpec(self.risk_mode, value)
+
+    @property
+    def charges(self) -> ChargeSchedule:
+        return SCHEDULES[self.broker]
 
 
 class RiskSettingsService:
@@ -47,6 +53,7 @@ class RiskSettingsService:
     def save(self, settings: RiskSettings) -> None:
         data = dataclasses.asdict(settings)
         data["risk_mode"] = settings.risk_mode.value
+        data["broker"] = settings.broker.value
         self._state.set(_KEY, json.dumps(data))
         self._cached = settings
 
@@ -60,6 +67,8 @@ class RiskSettingsService:
             values = {name: value for name, value in data.items() if name in known}
             if "risk_mode" in values:
                 values["risk_mode"] = RiskMode(values["risk_mode"])
+            if "broker" in values:
+                values["broker"] = Broker(values["broker"])
             return RiskSettings(**values)
         except (ValueError, TypeError):
             logger.warning("ignoring unreadable risk settings", exc_info=True)

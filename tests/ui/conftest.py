@@ -26,6 +26,7 @@ from tests.fakes.sources import (
     FakeCalendarSource,
     FakeFundamentals,
     FakeHistory,
+    FakeQuotes,
     FakeSecuritiesSource,
 )
 from tests.ui.helpers import key
@@ -70,10 +71,16 @@ def chartink_source() -> FakeChartinkSource:
 
 
 @pytest.fixture
+def quotes() -> FakeQuotes:
+    return FakeQuotes()
+
+
+@pytest.fixture
 def services(
     feed: FakeFeedFactory,
     securities_source: FakeSecuritiesSource,
     chartink_source: FakeChartinkSource,
+    quotes: FakeQuotes,
 ) -> Iterator[Services]:
     settings = load_settings()
     settings.paths.ensure()
@@ -101,6 +108,7 @@ def services(
         feed_factory=feed,
         securities_source=securities_source,
         chartink_source=chartink_source,
+        quotes=quotes,
         clock=lambda: SUNDAY,
     )
     curve = array("d", (1_000 * (m + 1) / 375 for m in range(375)))

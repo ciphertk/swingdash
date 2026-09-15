@@ -12,7 +12,7 @@ from rich.text import Text
 
 from swingdash.domain.risk.portfolio import Position
 from swingdash.services.risk import PositionRow
-from swingdash.ui.tabs.risk.format import grouped, inr, signed_inr
+from swingdash.ui.tabs.risk.format import grouped, inr, short_date, signed_inr
 
 
 @dataclass(frozen=True)
@@ -78,8 +78,9 @@ def _to_stop(row: PositionRow, _: float) -> float | None:
 
 
 def _ltp_cell(row: PositionRow, _: float) -> Text:
-    # A cached close is dimmed: it isn't a live price.
-    return _number(_price(row), style="" if row.quote and row.quote.live else "grey62")
+    # A cached daily close is dimmed: it isn't today's price.
+    stale = row.quote is not None and row.quote.source == "close"
+    return _number(_price(row), style="grey62" if stale else "")
 
 
 def _stop_cell(row: PositionRow, _: float) -> Text:
@@ -115,6 +116,12 @@ OPEN_COLUMNS: tuple[Column[PositionRow], ...] = (
     Column("risk_pct", "RISK %", _risk_pct, lambda r, c: _number(_risk_pct(r, c))),
     Column("to_stop", "TO STOP", _to_stop, lambda r, c: _signed(_to_stop(r, c), signed_inr)),
     Column(
+        "taken",
+        "TAKEN",
+        lambda r, _: r.position.opened_on.isoformat(),
+        lambda r, _: Text(short_date(r.position.opened_on)),
+    ),
+    Column(
         "days",
         "DAYS",
         lambda r, _: r.days_held,
@@ -134,8 +141,8 @@ def _closed_r(position: Position, _: float) -> float | None:
     return None if position.exit_price is None else position.r_multiple(position.exit_price)
 
 
-def _date_cell(value: object) -> Text:
-    return Text(str(value)) if value else _missing()
+def _days_held(position: Position, _: float) -> int | None:
+    return None if position.closed_on is None else (position.closed_on - position.opened_on).days
 
 
 CLOSED_COLUMNS: tuple[Column[Position], ...] = (
@@ -159,15 +166,16 @@ CLOSED_COLUMNS: tuple[Column[Position], ...] = (
     Column("pnl_pct", "P&L %", _realised_pct, lambda p, c: _signed(_realised_pct(p, c))),
     Column("r", "R", _closed_r, lambda p, c: _signed(_closed_r(p, c), _r_text)),
     Column(
-        "opened",
-        "OPENED",
+        "taken",
+        "TAKEN",
         lambda p, _: p.opened_on.isoformat(),
-        lambda p, _: _date_cell(p.opened_on.isoformat()),
+        lambda p, _: Text(short_date(p.opened_on)),
     ),
     Column(
-        "closed",
-        "CLOSED",
+        "exited",
+        "EXITED",
         lambda p, _: p.closed_on.isoformat() if p.closed_on else None,
-        lambda p, _: _date_cell(p.closed_on.isoformat() if p.closed_on else None),
+        lambda p, _: Text(short_date(p.closed_on)) if p.closed_on else _missing(),
     ),
+    Column("days", "DAYS", _days_held, lambda p, c: _number(_days_held(p, c), "{:d}")),
 )

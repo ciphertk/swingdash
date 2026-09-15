@@ -292,11 +292,22 @@ over the last 20 sessions, built from 1-minute candles.
   charges**, bisected since brokerage is flat), heat left, max allocation,
   free capital. `limited_by` names the binding one; `allowed` holds each
   limit's own quantity. Long-only: the stop must be below entry.
-- **Charges** (`domain/risk/charges.py`): Upstox NSE delivery, verified
-  15 Sep 2026 at https://upstox.com/brokerage-charges/ - ₹20/order, STT 0.1%
-  both sides, NSE txn 0.00307% (IPFT included, from 1 Mar 2026), SEBI
-  ₹10/crore, stamp 0.015% buy, GST 18% on brokerage + txn + DP, DP ₹20 per
-  scrip per sell. Re-verify before changing.
+- **Charges** (`domain/risk/charges.py`, `SCHEDULES` per `Broker`, chosen in
+  settings): NSE delivery, verified 15 Sep 2026 on each broker's page. All:
+  STT 0.1% both sides, stamp 0.015% buy, SEBI ₹10/crore, GST 18%, txn
+  ~0.00307%. Upstox ₹20/order, GST on brokerage+txn+DP, DP ₹20+GST. Dhan ₹0,
+  GST also on SEBI, DP ₹12.50+GST. Zerodha ₹0, GST also on SEBI, DP ₹15.34
+  GST included. Brokers differ on GST-on-SEBI and whether DP includes GST -
+  that's what the schedule flags are for. Re-verify before changing.
+- **Prices** (`RiskService._quote`): newest of a feed tick and a Market Quote
+  API LTP (`QuoteSource`, asked at most once a minute per symbol the feed
+  isn't updating, on a worker), else the last cached daily close - which is
+  *yesterday's or older* (history excludes today), so never show it as the
+  current price without saying so. Verified: after the close the feed sent
+  nothing and the cached close was 3 sessions old; the LTP API returned
+  today's close.
+- **Trade dates**: `opened_on` / `closed_on` are user-editable (not the day
+  they were entered), can't be in the future, and exit ≥ taken.
 - **Heat** = Σ max(0, entry − stop) × qty over open positions; a trailed stop
   at/above entry contributes 0. `initial_stop` is kept for R multiples.
 - **Positions and capital are user-entered** (the Analytics Token can't read

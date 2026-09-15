@@ -5,7 +5,10 @@ RiskService - position sizing and the open-risk tracker behind the Risk tab.
   positions are entered by the user (the Analytics Token can't read holdings)
   and live in SQLite.
 - Prices: the live feed (one hub subscription for open positions plus the
-  symbol being sized), else the last cached daily close.
+  symbol being sized) or, when it has nothing newer, the Market Quote API's
+  last traded price (refreshed at most once a minute, off the UI thread -
+  it also answers after the close, when the feed may send nothing). The last
+  cached daily close is only a last resort: history never includes today.
 - Stops by ATR / recent low and the liquidity check need daily candles: read
   from the cache, topped up once per session on a background thread (paced by
   the shared Upstox limiter).
@@ -18,8 +21,11 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
+import time
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from swingdash.adapters.storage.repos.positions import PositionRepository
 from swingdash.domain.bars import DailyBar
@@ -31,7 +37,7 @@ from swingdash.domain.securities import NOT_UNDER_SURVEILLANCE, PriceBand, Surve
 from swingdash.services.candles import CandleService
 from swingdash.services.instruments import InstrumentService, InstrumentsUnavailableError
 from swingdash.services.market_data_hub import MarketDataHub, Subscription
-from swingdash.services.ports import MarketCalendar
+from swingdash.services.ports import MarketCalendar, QuoteSource
 from swingdash.services.risk_settings import RiskSettings, RiskSettingsService
 from swingdash.services.securities import SecuritiesService
 
@@ -40,13 +46,23 @@ logger = logging.getLogger(__name__)
 # Sessions of history the checks need: 20-day average volume.
 _VOLUME_SESSIONS = 20
 _EVENT_LOG_SIZE = 20
+# How often to ask the Market Quote API for symbols the feed isn't updating.
+QUOTE_REFRESH_SECONDS = 60.0
+
+PriceSource = Literal["live", "quote", "close"]
 
 
 @dataclass(frozen=True)
 class Quote:
     price: float
-    live: bool  # from the feed; otherwise the last cached daily close
-    as_of: str | None = None  # the close's date, when not live
+    # live: a feed tick; quote: the Market Quote API's last traded price;
+    # close: the last cached daily close (not today's).
+    source: PriceSource
+    as_of: str | None = None  # the quote's time, or the close's date
+
+    @property
+    def live(self) -> bool:
+        return self.source == "live"
 
 
 @dataclass(frozen=True)
@@ -96,6 +112,7 @@ class RiskService:
         securities: SecuritiesService,
         calendar: MarketCalendar,
         hub: MarketDataHub,
+        quotes: QuoteSource,
     ) -> None:
         self._repo = repo
         self._settings = settings
@@ -104,10 +121,17 @@ class RiskService:
         self._securities = securities
         self._calendar = calendar
         self._hub = hub
+        self._quotes = quotes
 
         self.version = 0  # bumped when positions, settings or fetched history change
         self._positions: list[Position] | None = None
-        self._prices: dict[str, float] = {}  # written by the feed thread
+        # key -> (price, monotonic time). Ticks are written by the feed thread,
+        # quotes by a worker; each write is a single dict assignment.
+        self._ticks: dict[str, tuple[float, float]] = {}
+        self._rest: dict[str, tuple[float, float, str]] = {}  # ... plus "HH:MM"
+        self._quote_attempts: dict[str, float] = {}
+        self._quotes_in_flight = False
+        self._quote_error: str | None = None
         self._watched_key: str | None = None
         self._subscription: Subscription | None = None
         self._subscribed: frozenset[str] = frozenset()
@@ -156,6 +180,7 @@ class RiskService:
             return None
         symbol = symbol.strip().upper()
         bars = self._history(key)
+        self._refresh_quotes([key])
         band, surveillance = self._flags_for(symbol)
         recent = bars[-_VOLUME_SESSIONS:]
         return SymbolInfo(
@@ -200,6 +225,7 @@ class RiskService:
                 free_capital=summary.free_capital,
                 heat_left=summary.heat_left,
                 lot_size=info.lot_size,
+                charges=settings.charges,
             )
         )
         context = TradeContext(
@@ -221,6 +247,9 @@ class RiskService:
     def portfolio(self) -> PortfolioView:
         positions = self.positions()
         today = self._calendar.today()
+        self._refresh_quotes(
+            [p.instrument_key for p in positions if p.is_open and p.instrument_key]
+        )
         rows = tuple(
             PositionRow(
                 position=p,
@@ -240,16 +269,25 @@ class RiskService:
         )
 
     def open_position(
-        self, symbol: str, quantity: int, entry: float, stop: float, note: str = ""
+        self,
+        symbol: str,
+        quantity: int,
+        entry: float,
+        stop: float,
+        note: str = "",
+        opened_on: dt.date | None = None,
     ) -> Position:
+        """`opened_on`: the day the trade was taken (default today)."""
         key = self._key(symbol)
         if key is None:
             raise RiskInputError(f"'{symbol.strip().upper()}' isn't an NSE stock swingdash knows.")
         _check_position(quantity, entry, stop)
         if stop >= entry:
             raise RiskInputError("The stop must be below entry when opening a position.")
+        opened_on = opened_on or self._calendar.today()
+        self._check_not_future(opened_on, "The date taken")
         position_id = self._repo.add(
-            symbol.strip().upper(), key, quantity, entry, stop, self._calendar.today(), note
+            symbol.strip().upper(), key, quantity, entry, stop, opened_on, note
         )
         self._changed()
         position = self._repo.get(position_id)
@@ -257,19 +295,45 @@ class RiskService:
         return position
 
     def update_position(
-        self, position_id: int, *, quantity: int, entry: float, stop: float, note: str = ""
+        self,
+        position_id: int,
+        *,
+        quantity: int,
+        entry: float,
+        stop: float,
+        note: str = "",
+        opened_on: dt.date | None = None,
     ) -> None:
         """A stop at or above entry is fine here - that's a trailed stop."""
         _check_position(quantity, entry, stop)
-        self._repo.update(position_id, quantity=quantity, entry=entry, stop=stop, note=note)
+        position = self._repo.get(position_id)
+        if position is None:
+            raise RiskInputError("That position no longer exists.")
+        opened_on = opened_on or position.opened_on
+        self._check_not_future(opened_on, "The date taken")
+        if position.closed_on is not None and opened_on > position.closed_on:
+            raise RiskInputError("The date taken can't be after the exit date.")
+        self._repo.update(
+            position_id, quantity=quantity, entry=entry, stop=stop, note=note, opened_on=opened_on
+        )
         self._changed()
 
     def close_position(
         self, position_id: int, exit_price: float, closed_on: dt.date | None = None
     ) -> None:
+        """`closed_on`: the day the trade was exited (default today)."""
         if exit_price <= 0:
             raise RiskInputError("The exit price must be above zero.")
-        self._repo.close(position_id, exit_price, closed_on or self._calendar.today())
+        position = self._repo.get(position_id)
+        if position is None:
+            raise RiskInputError("That position no longer exists.")
+        closed_on = closed_on or self._calendar.today()
+        self._check_not_future(closed_on, "The exit date")
+        if closed_on < position.opened_on:
+            raise RiskInputError(
+                f"The exit date can't be before the date taken ({position.opened_on:%d %b %Y})."
+            )
+        self._repo.close(position_id, exit_price, closed_on)
         self._changed()
 
     def delete_position(self, position_id: int) -> None:
@@ -294,6 +358,10 @@ class RiskService:
         self._positions = None
         self.version += 1
         self._resubscribe()
+
+    def _check_not_future(self, day: dt.date, what: str) -> None:
+        if day > self._calendar.today():
+            raise RiskInputError(f"{what} can't be in the future.")
 
     def _key(self, symbol: str | None) -> str | None:
         if not symbol or not symbol.strip():
@@ -331,15 +399,57 @@ class RiskService:
         self, key: str, vtt: int | None, ltp: float | None, prev_close: float | None
     ) -> None:
         if ltp is not None and ltp > 0:
-            self._prices[key] = ltp
+            self._ticks[key] = (ltp, time.monotonic())
 
     def _quote(self, key: str, bars: tuple[DailyBar, ...]) -> Quote | None:
-        live = self._prices.get(key)
-        if live is not None:
-            return Quote(live, live=True)
+        """The newest of a feed tick and an API quote; else the last cached close."""
+        tick, rest = self._ticks.get(key), self._rest.get(key)
+        if tick is not None and (rest is None or tick[1] >= rest[1]):
+            return Quote(tick[0], "live")
+        if rest is not None:
+            return Quote(rest[0], "quote", rest[2])
         if bars:
-            return Quote(bars[-1].close, live=False, as_of=bars[-1].date)
+            return Quote(bars[-1].close, "close", bars[-1].date)
         return None
+
+    def _refresh_quotes(self, keys: Sequence[str]) -> None:
+        """Ask the quote API (on a worker) for keys the feed hasn't updated lately."""
+        now = time.monotonic()
+        stale = [
+            key
+            for key in dict.fromkeys(keys)
+            if now - self._ticks.get(key, (0.0, float("-inf")))[1] >= QUOTE_REFRESH_SECONDS
+            and now - self._quote_attempts.get(key, float("-inf")) >= QUOTE_REFRESH_SECONDS
+        ]
+        with self._lock:
+            if not stale or self._quotes_in_flight:
+                return
+            self._quotes_in_flight = True
+            for key in stale:
+                self._quote_attempts[key] = now
+        threading.Thread(
+            target=self._fetch_quotes, args=(stale,), name="risk-quotes", daemon=True
+        ).start()
+
+    def _fetch_quotes(self, keys: list[str]) -> None:
+        try:
+            prices = self._quotes.ltp(keys)
+        except Exception as exc:
+            logger.warning("risk quote fetch failed", exc_info=True)
+            message = f"quotes unavailable: {exc}"
+            if message != self._quote_error:  # say it once, not every minute
+                self._events.append(message)
+            self._quote_error = message
+        else:
+            self._quote_error = None
+            stamp = time.monotonic()
+            label = self._calendar.now().strftime("%H:%M")
+            for key, price in prices.items():
+                if price > 0:
+                    self._rest[key] = (price, stamp, label)
+        finally:
+            with self._lock:
+                self._quotes_in_flight = False
 
     def _lookback_days(self) -> int:
         settings = self.settings

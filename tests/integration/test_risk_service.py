@@ -19,6 +19,7 @@ from swingdash.adapters.storage.repos.positions import PositionRepository
 from swingdash.adapters.storage.repos.securities import SecuritiesRepository
 from swingdash.domain.bars import DailyBar
 from swingdash.domain.calendar import IST
+from swingdash.domain.risk.charges import Broker
 from swingdash.domain.risk.sizing import Limit, RiskMode, RiskSpec
 from swingdash.domain.risk.stops import RiskInputError, StopMethod
 from swingdash.domain.securities import PriceBand
@@ -30,7 +31,13 @@ from swingdash.services.risk import RiskService
 from swingdash.services.risk_settings import RiskSettings, RiskSettingsService
 from swingdash.services.securities import SecuritiesService
 from tests.fakes.feed import FakeFeedFactory
-from tests.fakes.sources import FakeFundamentals, FakeHistory, FakeSecuritiesSource, FixedCalendar
+from tests.fakes.sources import (
+    FakeFundamentals,
+    FakeHistory,
+    FakeQuotes,
+    FakeSecuritiesSource,
+    FixedCalendar,
+)
 
 MONDAY = dt.datetime(2026, 9, 14, 12, 0, tzinfo=IST)
 FRIDAY = dt.date(2026, 9, 11)
@@ -69,6 +76,8 @@ class Harness:
     history: FakeHistory
     securities: SecuritiesService
     db: Database
+    quotes: FakeQuotes
+    calendar: FixedCalendar
 
 
 @pytest.fixture
@@ -101,6 +110,7 @@ def harness(db: Database, tmp_path: Path):
         calendar,
     )
     feed = FakeFeedFactory()
+    quotes = FakeQuotes()
     settings = RiskSettingsService(AppStateRepository(db))
     settings.save(SETTINGS)
     service = RiskService(
@@ -111,8 +121,9 @@ def harness(db: Database, tmp_path: Path):
         securities=securities,
         calendar=calendar,
         hub=MarketDataHub(feed),
+        quotes=quotes,
     )
-    yield Harness(service, feed, history, securities, db)
+    yield Harness(service, feed, history, securities, db, quotes, calendar)
     service.close()
 
 
@@ -120,7 +131,8 @@ def test_sizing_uses_settings_cached_close_and_nse_flags(harness: Harness):
     harness.securities.refresh_blocking(include_sectors=False)
     info = harness.service.info("raymond")
     assert info is not None and info.quote is not None
-    assert (info.quote.price, info.quote.live, info.quote.as_of) == (500, False, "2026-09-11")
+    # No feed tick and no quote: the last cached close, marked as such.
+    assert (info.quote.price, info.quote.source, info.quote.as_of) == (500, "close", "2026-09-11")
     assert info.band is PriceBand.P20 and info.surveillance.flagged
     assert info.avg_volume == 100_000
 
@@ -234,3 +246,73 @@ def test_settings_survive_a_restart(harness: Harness):
 def test_unreadable_settings_fall_back_to_defaults(db: Database):
     AppStateRepository(db).set("risk_settings", "{not json")
     assert RiskSettingsService(AppStateRepository(db)).get() == RiskSettings()
+
+
+def test_quote_api_price_replaces_the_stale_close(harness: Harness):
+    # History stops at Friday; the quote API has today's last trade.
+    harness.quotes.prices = {_key("RAYMOND"): 481.5}
+    harness.service.info("RAYMOND")  # asks for a quote in the background
+    _wait(
+        lambda: (
+            (i := harness.service.info("RAYMOND")) is not None
+            and i.quote is not None
+            and i.quote.source == "quote"
+        )
+    )
+    info = harness.service.info("RAYMOND")
+    assert info is not None and info.quote is not None
+    assert (info.quote.price, info.quote.as_of) == (481.5, "12:00")
+
+    # A later feed tick wins over the quote.
+    harness.service.open_position("RAYMOND", 10, 500, 450)
+    harness.feed.transport.tick(_key("RAYMOND"), ltp=483.0)
+    row = harness.service.portfolio().open[0]
+    assert row.quote is not None and (row.quote.price, row.quote.source) == (483.0, "live")
+
+
+def test_quotes_are_asked_for_at_most_once_a_minute(harness: Harness):
+    harness.quotes.prices = {_key("RAYMOND"): 481.5}
+    for _ in range(5):
+        harness.service.info("RAYMOND")
+    _wait(lambda: harness.service.info("RAYMOND").quote.source == "quote")  # type: ignore[union-attr]
+    assert len(harness.quotes.calls) == 1
+
+
+def test_a_failing_quote_api_falls_back_and_says_so_once(harness: Harness):
+    harness.quotes.failing = True
+    harness.service.info("RAYMOND")
+    _wait(lambda: bool(harness.quotes.calls) and not harness.service._quotes_in_flight)
+    info = harness.service.info("RAYMOND")
+    assert info is not None and info.quote is not None and info.quote.source == "close"
+    assert any("quotes unavailable" in e for e in harness.service.events())
+
+
+def test_trade_dates(harness: Harness):
+    service = harness.service
+    taken = dt.date(2026, 9, 9)
+    position = service.open_position("RAYMOND", 10, 500, 450, opened_on=taken)
+    assert position.opened_on == taken
+    assert service.portfolio().open[0].days_held == 5  # Mon 14 Sep on the fixed clock
+
+    with pytest.raises(RiskInputError, match="future"):
+        service.open_position("TBZ", 10, 500, 450, opened_on=dt.date(2026, 9, 15))
+    with pytest.raises(RiskInputError, match="before the date taken"):
+        service.close_position(position.id, 520, dt.date(2026, 9, 8))
+    with pytest.raises(RiskInputError, match="future"):
+        service.close_position(position.id, 520, dt.date(2026, 9, 20))
+
+    service.update_position(
+        position.id, quantity=10, entry=500, stop=460, opened_on=dt.date(2026, 9, 10)
+    )
+    service.close_position(position.id, 520, dt.date(2026, 9, 11))
+    closed = service.portfolio().closed[0]
+    assert (closed.opened_on, closed.closed_on) == (dt.date(2026, 9, 10), dt.date(2026, 9, 11))
+
+
+def test_the_chosen_brokers_charges_go_into_the_risk(harness: Harness):
+    service = harness.service
+    upstox = service.size("RAYMOND", 500, StopMethod.PERCENT, 10)
+    service.save_settings(replace(SETTINGS, broker=Broker.DHAN))
+    dhan = service.size("RAYMOND", 500, StopMethod.PERCENT, 10)
+    assert dhan.result.charges.total < upstox.result.charges.total  # no ₹20 per order
+    assert RiskSettingsService(AppStateRepository(harness.db)).get().broker is Broker.DHAN

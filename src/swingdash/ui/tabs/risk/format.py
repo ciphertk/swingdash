@@ -1,6 +1,21 @@
-"""Numbers the Indian way: ₹10,00,000 rather than ₹1,000,000."""
+"""Numbers the Indian way (₹10,00,000 rather than ₹1,000,000), and trade dates."""
 
 from __future__ import annotations
+
+import datetime as dt
+
+# Accepted when typing a date: 09-09-2026, 9/9/26, 2026-09-09, 9 Sep 2026, 9-Sep-26.
+_DATE_FORMATS = (
+    "%d-%m-%Y",
+    "%d/%m/%Y",
+    "%Y-%m-%d",
+    "%d-%m-%y",
+    "%d/%m/%y",
+    "%d %b %Y",
+    "%d %b %y",
+    "%d-%b-%Y",
+    "%d-%b-%y",
+)
 
 
 def grouped(value: float, decimals: int = 0) -> str:
@@ -26,3 +41,26 @@ def inr(value: float, decimals: int = 0) -> str:
 
 def signed_inr(value: float, decimals: int = 0) -> str:
     return inr(value, decimals) if value < 0 else f"+{inr(value, decimals)}"
+
+
+def date_input(day: dt.date) -> str:
+    """How a date is pre-filled in a form: 09-09-2026."""
+    return f"{day:%d-%m-%Y}"
+
+
+def short_date(day: dt.date) -> str:
+    """How a date shows in a table: 09 Sep 26."""
+    return f"{day:%d %b %y}"
+
+
+def parse_date(text: str) -> dt.date:
+    """Raises ValueError with a message fit to show the user."""
+    cleaned = " ".join(text.strip().split())
+    for fmt in _DATE_FORMATS:
+        try:
+            day = dt.datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+        if day.year >= 1990:  # "%Y" also accepts "26" as the year 26
+            return day
+    raise ValueError(f"'{text.strip()}' isn't a date - use DD-MM-YYYY, e.g. 09-09-2026.")

@@ -212,3 +212,18 @@ class FakeFundamentals:
         if isin in self.empty:
             return CompanyProfile(None, None, None)
         return CompanyProfile(f"Sector of {isin}", 1000.0, None)
+
+
+class FakeQuotes:
+    """A QuoteSource: set `prices` (instrument key -> LTP), or `failing` to raise."""
+
+    def __init__(self, prices: dict[str, float] | None = None) -> None:
+        self.prices = prices or {}
+        self.calls: list[list[str]] = []
+        self.failing = False
+
+    def ltp(self, instrument_keys) -> dict[str, float]:
+        self.calls.append(list(instrument_keys))
+        if self.failing:
+            raise ConnectionError("offline")
+        return {k: self.prices[k] for k in instrument_keys if k in self.prices}

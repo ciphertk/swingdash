@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass
 
 from textual.app import ComposeResult
@@ -9,8 +10,10 @@ from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, RadioButton, RadioSet
 
+from swingdash.domain.risk.charges import Broker
 from swingdash.domain.risk.sizing import RiskMode
 from swingdash.services.risk_settings import RiskSettings
+from swingdash.ui.tabs.risk.format import date_input, parse_date
 
 _DIALOG_CSS = """
 {name} {{ align: center middle; }}
@@ -66,6 +69,9 @@ class _FormModal[T](ModalScreen[T | None]):
             raise ValueError(f"{label} must be above zero.")
         return value
 
+    def _date(self, input_id: str) -> dt.date:
+        return parse_date(self.query_one(f"#{input_id}", Input).value)
+
     def _integer(self, input_id: str, label: str) -> int:
         value = self._number(input_id, label)
         if value != int(value):
@@ -79,6 +85,13 @@ class PositionForm:
     entry: float
     stop: float
     note: str
+    taken_on: dt.date
+
+
+@dataclass(frozen=True)
+class CloseForm:
+    exit_price: float
+    exited_on: dt.date
 
 
 class PositionModal(_FormModal[PositionForm]):
@@ -92,19 +105,22 @@ class PositionModal(_FormModal[PositionForm]):
         quantity: int,
         entry: float,
         stop: float,
+        taken_on: dt.date,
         note: str = "",
         confirm_label: str = "Save",
     ) -> None:
         super().__init__()
         self._title = title
-        self._values = (quantity, entry, stop, note)
+        self._values = (quantity, entry, stop, taken_on, note)
         self._confirm_label = confirm_label
 
     def compose(self) -> ComposeResult:
-        quantity, entry, stop, note = self._values
+        quantity, entry, stop, taken_on, note = self._values
         with Vertical(id="dialog"):
             yield Label(self._title)
             with Grid():
+                yield Label("Date taken")
+                yield Input(date_input(taken_on), placeholder="DD-MM-YYYY", id="taken-on")
                 yield Label("Quantity")
                 yield Input(str(quantity), type="integer", id="quantity")
                 yield Label("Entry")
@@ -127,16 +143,18 @@ class PositionModal(_FormModal[PositionForm]):
             entry=self._number("entry", "Entry"),
             stop=self._number("stop", "Stop"),
             note=self.query_one("#note", Input).value.strip(),
+            taken_on=self._date("taken-on"),
         )
 
 
-class ClosePositionModal(_FormModal[float]):
+class ClosePositionModal(_FormModal[CloseForm]):
     CSS = _DIALOG_CSS.format(name="ClosePositionModal")
 
-    def __init__(self, title: str, price: float | None) -> None:
+    def __init__(self, title: str, price: float | None, exited_on: dt.date) -> None:
         super().__init__()
         self._title = title
         self._price = price
+        self._exited_on = exited_on
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
@@ -144,6 +162,8 @@ class ClosePositionModal(_FormModal[float]):
             with Grid():
                 yield Label("Exit price")
                 yield Input(f"{self._price:.2f}" if self._price else "", type="number", id="exit")
+                yield Label("Exit date")
+                yield Input(date_input(self._exited_on), placeholder="DD-MM-YYYY", id="exited-on")
             yield Label("", id="form-error")
             with Horizontal(id="buttons"):
                 yield Button("Cancel", id="cancel")
@@ -152,8 +172,8 @@ class ClosePositionModal(_FormModal[float]):
     def on_mount(self) -> None:
         self.query_one("#exit", Input).focus()
 
-    def collect(self) -> float:
-        return self._number("exit", "Exit price")
+    def collect(self) -> CloseForm:
+        return CloseForm(self._number("exit", "Exit price"), self._date("exited-on"))
 
 
 class RiskSettingsModal(_FormModal[RiskSettings]):
@@ -175,6 +195,10 @@ class RiskSettingsModal(_FormModal[RiskSettings]):
             with Grid():
                 yield Label("Capital (₹)")
                 yield Input(f"{s.capital:.0f}" if s.capital else "", type="number", id="capital")
+                yield Label("Broker (for charges)")
+                with RadioSet(id="broker"):
+                    for broker in Broker:
+                        yield RadioButton(broker.value.title(), s.broker is broker)
                 yield Label("Risk per trade in")
                 with RadioSet(id="risk-mode"):
                     yield RadioButton("% of capital", s.risk_mode is RiskMode.PERCENT)
@@ -205,6 +229,7 @@ class RiskSettingsModal(_FormModal[RiskSettings]):
 
     def collect(self) -> RiskSettings:
         amount_mode = self.query_one("#risk-mode", RadioSet).pressed_index == 1
+        broker = list(Broker)[max(0, self.query_one("#broker", RadioSet).pressed_index)]
         allocation = self._number("allocation", "Max position %")
         heat = self._number("heat", "Max heat %")
         if allocation > 100 or heat > 100:
@@ -220,4 +245,5 @@ class RiskSettingsModal(_FormModal[RiskSettings]):
             atr_multiple=self._number("atr-multiple", "ATR multiple"),
             low_sessions=self._integer("low-sessions", "Recent low days"),
             liquidity_warn_pct=self._number("liquidity", "Liquidity %"),
+            broker=broker,
         )

@@ -38,6 +38,7 @@ from swingdash.ui.export import ExportTable
 from swingdash.ui.tabs.base import TabBase
 from swingdash.ui.tabs.risk.format import grouped, inr, signed_inr
 from swingdash.ui.tabs.risk.modals import (
+    CloseForm,
     ClosePositionModal,
     PositionForm,
     PositionModal,
@@ -273,7 +274,7 @@ class RiskTab(TabBase):
         self._stop_hint.update(
             Text(f"→ {sized.stop:,.2f}  (-{sized.result.stop_pct:.1f}%)", style="cyan")
         )
-        self._result.update(_result_text(sized))
+        self._result.update(_result_text(sized, risk.settings.charges.name))
 
     def _risk_spec(self) -> RiskSpec | None:
         value = _number(self._risk_value.value)
@@ -312,6 +313,7 @@ class RiskTab(TabBase):
                 result.quantity,
                 result.entry,
                 result.stop,
+                self.services.calendar.today(),
                 confirm_label="Add position",
             ),
             partial(self._trade_taken, sized.info.symbol),
@@ -322,7 +324,7 @@ class RiskTab(TabBase):
             return
         try:
             self.services.risk.open_position(
-                symbol, form.quantity, form.entry, form.stop, form.note
+                symbol, form.quantity, form.entry, form.stop, form.note, form.taken_on
             )
         except RiskInputError as exc:
             self.app.notify(str(exc), severity="error")
@@ -355,6 +357,7 @@ class RiskTab(TabBase):
                 position.quantity,
                 position.entry,
                 position.stop,
+                position.opened_on,
                 position.note,
             ),
             partial(self._position_edited, position.id),
@@ -370,6 +373,7 @@ class RiskTab(TabBase):
                 entry=form.entry,
                 stop=form.stop,
                 note=form.note,
+                opened_on=form.taken_on,
             )
         except RiskInputError as exc:
             self.app.notify(str(exc), severity="error")
@@ -385,15 +389,16 @@ class RiskTab(TabBase):
             ClosePositionModal(
                 f"Close {position.symbol} ({grouped(position.quantity)} @ {position.entry:,.2f})",
                 row.quote.price if row.quote else None,
+                self.services.calendar.today(),
             ),
             partial(self._position_closed, position.id, position.symbol),
         )
 
-    def _position_closed(self, position_id: int, symbol: str, exit_price: float | None) -> None:
-        if exit_price is None:
+    def _position_closed(self, position_id: int, symbol: str, form: CloseForm | None) -> None:
+        if form is None:
             return
         try:
-            self.services.risk.close_position(position_id, exit_price)
+            self.services.risk.close_position(position_id, form.exit_price, form.exited_on)
         except RiskInputError as exc:
             self.app.notify(str(exc), severity="error")
             return
@@ -520,6 +525,7 @@ class RiskTab(TabBase):
             f" of {summary.heat_limit_pct:g}% ({inr(summary.heat)}, {inr(summary.heat_left)} left)"
         )
         text.append(f"  ·  free {inr(summary.free_capital)}  ·  {summary.open_count} open")
+        text.append(f"  ·  {settings.charges.name} charges", style="grey62")
         return text
 
     def _table_title_text(self, view: PortfolioView) -> Text:
@@ -539,7 +545,10 @@ class RiskTab(TabBase):
         return text
 
     def _status_text(self) -> Text:
-        text = Text("LTP dimmed = last close, not live.  ", style="grey50")
+        text = Text(
+            "LTP: live tick, else latest quote; dimmed = last daily close (no quote yet).  ",
+            style="grey50",
+        )
         if self._event_log:
             text.append(" | ".join(self._event_log[-2:]), style="yellow")
         return text
@@ -569,16 +578,18 @@ def _quote_text(info: SymbolInfo) -> Text:
         )
         return text
     text.append(f"{info.quote.price:,.2f} ", style="bold")
-    if info.quote.live:
+    if info.quote.source == "live":
         text.append("live", style="green")
+    elif info.quote.source == "quote":
+        text.append(f"LTP at {info.quote.as_of or ''}", style="cyan")
     else:
-        text.append(f"close {info.quote.as_of or ''}", style="grey62")
+        text.append(f"close {info.quote.as_of or ''} - no quote yet", style="yellow")
     if info.history_pending:
         text.append("  updating history...", style="yellow")
     return text
 
 
-def _result_text(sized: SizedTrade) -> Text:
+def _result_text(sized: SizedTrade, charges_name: str) -> Text:
     result, info = sized.result, sized.info
     text = Text()
     if result.quantity:
@@ -590,7 +601,10 @@ def _result_text(sized: SizedTrade) -> Text:
         )
     else:
         text.append("No position\n", style="bold red")
-    text.append(f"Loss at stop {inr(result.loss_at_stop)} + charges {inr(result.charges.total)} = ")
+    text.append(
+        f"Loss at stop {inr(result.loss_at_stop)} + {charges_name} charges "
+        f"{inr(result.charges.total)} = "
+    )
     text.append(inr(result.total_risk), style="bold")
     text.append(f"  ·  {result.risk_pct:.2f}% of capital\n")
     text.append(

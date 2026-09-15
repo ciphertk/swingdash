@@ -67,13 +67,21 @@ class PositionRepository:
             return int(cursor.lastrowid or 0)
 
     def update(
-        self, position_id: int, *, quantity: int, entry: float, stop: float, note: str
+        self,
+        position_id: int,
+        *,
+        quantity: int,
+        entry: float,
+        stop: float,
+        note: str,
+        opened_on: dt.date,
     ) -> None:
         """The initial stop stays: it's what the trade risked when it was taken."""
         with self._db.transaction() as conn:
             conn.execute(
-                "UPDATE positions SET quantity = ?, entry = ?, stop = ?, note = ? WHERE id = ?",
-                (quantity, entry, stop, note, position_id),
+                "UPDATE positions SET quantity = ?, entry = ?, stop = ?, note = ?, opened_on = ?"
+                " WHERE id = ?",
+                (quantity, entry, stop, note, opened_on.isoformat(), position_id),
             )
 
     def close(self, position_id: int, exit_price: float, closed_on: dt.date) -> None:

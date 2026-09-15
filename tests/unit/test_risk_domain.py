@@ -5,7 +5,7 @@ import datetime as dt
 import pytest
 
 from swingdash.domain.bars import DailyBar
-from swingdash.domain.risk.charges import NO_CHARGES, UPSTOX_DELIVERY, round_trip
+from swingdash.domain.risk.charges import NO_CHARGES, SCHEDULES, UPSTOX_DELIVERY, Broker, round_trip
 from swingdash.domain.risk.checks import Severity, TradeContext, trade_warnings
 from swingdash.domain.risk.funding import Funding
 from swingdash.domain.risk.portfolio import Position, summarise
@@ -101,6 +101,23 @@ def test_round_trip_charges_match_a_worked_example():
     assert charges.sell == pytest.approx(sell)
     assert charges.total == pytest.approx(176.836, abs=0.01)
     assert round_trip(UPSTOX_DELIVERY, 0, 500, 450).total == 0
+
+
+def test_dhan_and_zerodha_delivery_charges():
+    # Buy 100 @ 500 (₹50,000), sell 100 @ 450 (₹45,000). Zero brokerage at both.
+    dhan = round_trip(SCHEDULES[Broker.DHAN], 100, 500, 450)
+    assert dhan.buy == pytest.approx(50 + 1.534950 + 0.05 + 7.5 + 0.18 * (1.534950 + 0.05))
+    assert dhan.sell == pytest.approx(
+        45 + 1.3814550 + 0.045 + 12.5 + 0.18 * (1.3814550 + 0.045 + 12.5)
+    )
+
+    zerodha = round_trip(SCHEDULES[Broker.ZERODHA], 100, 500, 450)
+    assert zerodha.buy == pytest.approx(50 + 1.535 + 0.05 + 7.5 + 0.18 * (1.535 + 0.05))
+    # ₹15.34 DP already includes its GST.
+    assert zerodha.sell == pytest.approx(45 + 1.3815 + 0.045 + 15.34 + 0.18 * (1.3815 + 0.045))
+
+    upstox = round_trip(UPSTOX_DELIVERY, 100, 500, 450)
+    assert dhan.total < zerodha.total < upstox.total  # no ₹20 brokerage per order
 
 
 # --- sizing ----------------------------------------------------------------

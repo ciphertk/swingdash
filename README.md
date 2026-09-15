@@ -182,22 +182,26 @@ Things to know:
 
 | Key | Action |
 |---|---|
-| `S` (or the Settings button) | capital, risk per trade, max position %, max heat %, ATR / recent-low / liquidity settings |
-| `ctrl+t` (or Take trade) | add the sized trade to open positions (adjust the fill first) |
-| `m` | edit the highlighted position - e.g. trail its stop |
-| `C` | close it at an exit price (it moves to closed positions) |
+| `S` (or the Settings button) | capital, broker (for charges), risk per trade, max position %, max heat %, ATR / recent-low / liquidity settings |
+| `ctrl+t` (or Take trade) | add the sized trade to open positions (adjust the fill and the date taken first) |
+| `m` | edit the highlighted position - e.g. trail its stop, or fix the date taken |
+| `C` | close it at an exit price and exit date (it moves to closed positions) |
 | `D` | delete it (a mistake, not an exit) |
 | `h` | switch the table between open and closed positions |
 | `Tab` | move between the form, the buttons and the table |
 
 Type a symbol and the form sizes the trade as you go. The entry fills in
-with the live price (or the last close outside market hours) until you type
-your own. Pick the stop as a price, a % below entry, an ATR multiple or the
-lowest low of the last N days, and the risk as a % of capital or a fixed ₹
-amount. The quantity is the most shares that keeps every limit:
+with the current price until you type your own. Prices come from the live
+feed, else Upstox's quote API (today's last trade, also after the close -
+labelled "LTP at 15:32"); a dimmed/yellow "close" is only the last cached
+daily close, shown until a quote arrives. Pick the stop as a price, a %
+below entry, an ATR multiple or the lowest low of the last N days, and the
+risk as a % of capital or a fixed ₹ amount. The quantity is the most shares
+that keeps every limit:
 
-- **risk** - the loss if the stop is hit, *including* round-trip charges
-  (Upstox delivery rates, verified Sep 2026), stays within the risk per trade;
+- **risk** - the loss if the stop is hit, *including* round-trip delivery
+  charges for your broker (Upstox, Dhan or Zerodha - pick it in settings;
+  rates verified Sep 2026), stays within the risk per trade;
 - **heat** - the total open risk of your positions (Σ (entry − stop) ×
   quantity, zero once a stop is at or above entry) stays within the heat limit;
 - **allocation** - one position uses at most the max position % of capital;
@@ -211,8 +215,10 @@ Band and surveillance come from the Securities tab's data - fetch it once.
 
 Upstox's Analytics Token can't read your holdings, so positions are the ones
 you add here, and capital is what you set (closing trades doesn't change it).
-The table shows live P&L, R multiple, open risk and **to stop** - what a fall
-from the current price to the stop would give back.
+The table shows live P&L, R multiple, open risk, **to stop** - what a fall
+from the current price to the stop would give back - and the date taken
+(closed positions: dates taken and exited, and days held). Dates can be
+typed as 09-09-2026, 9/9/26 or 9 Sep 2026.
 
 ## Other commands
 

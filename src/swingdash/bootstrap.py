@@ -28,6 +28,7 @@ from swingdash.adapters.upstox.client import UpstoxClient
 from swingdash.adapters.upstox.feed import UpstoxFeedTransport
 from swingdash.adapters.upstox.fundamentals import UpstoxFundamentals
 from swingdash.adapters.upstox.history import UpstoxHistory
+from swingdash.adapters.upstox.quotes import UpstoxQuotes
 from swingdash.services.calendar import CalendarService
 from swingdash.services.candles import CandleService
 from swingdash.services.chartink import ChartinkService
@@ -45,6 +46,7 @@ from swingdash.services.ports import (
     OnConnection,
     OnStatus,
     OnTick,
+    QuoteSource,
     SecuritiesSource,
 )
 from swingdash.services.preferences import PreferencesService
@@ -70,6 +72,7 @@ def build_services(
     feed_factory: FeedFactory | None = None,
     securities_source: SecuritiesSource | None = None,
     chartink_source: ChartinkSourcePort | None = None,
+    quotes: QuoteSource | None = None,
     clock: Callable[[], dt.datetime] | None = None,
 ) -> Services:
     settings.paths.ensure()
@@ -141,5 +144,6 @@ def build_services(
             securities=securities,
             calendar=calendar,
             hub=hub,
+            quotes=quotes or UpstoxQuotes(client),
         ),
     )
