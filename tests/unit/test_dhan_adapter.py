@@ -12,14 +12,14 @@ import pytest
 import requests
 
 from swingdash.adapters.dhan import parsers
-from swingdash.adapters.dhan.http import DhanCredentials, DhanFormatError, DhanHttp
+from swingdash.adapters.dhan.http import DhanFormatError, DhanHttp
 from swingdash.adapters.dhan.source import DhanSource
-from swingdash.domain.broker import Side
+from swingdash.domain.broker import BrokerCredentials, Side
 from swingdash.domain.calendar import IST
 from swingdash.domain.errors import BrokerAuthError, BrokerUnavailableError
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "dhan"
-CREDENTIALS = DhanCredentials("1000000000", "header.payload.signature")
+CREDENTIALS = BrokerCredentials("1000000000", "header.payload.signature")
 
 
 def _json(name: str) -> Any:
@@ -130,7 +130,7 @@ class _Session:
 
 
 def _http(
-    *responses: _Response, credentials: DhanCredentials | None = CREDENTIALS
+    *responses: _Response, credentials: BrokerCredentials | None = CREDENTIALS
 ) -> tuple[DhanHttp, _Session]:
     session = _Session(*responses)
     http = DhanHttp(

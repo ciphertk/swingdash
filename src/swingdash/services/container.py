@@ -15,6 +15,7 @@ from swingdash.adapters.storage.db import Database
 from swingdash.services.calendar import CalendarService
 from swingdash.services.candles import CandleService
 from swingdash.services.chartink import ChartinkService
+from swingdash.services.dhan_sync import DhanSyncService
 from swingdash.services.fundamentals import FundamentalsService
 from swingdash.services.instruments import InstrumentService
 from swingdash.services.market_data_hub import MarketDataHub
@@ -45,6 +46,7 @@ class Services:
     preferences: PreferencesService
     chartink: ChartinkService
     risk: RiskService
+    dhan: DhanSyncService
 
     def new_rvol_engine(self, symbols: list[str]) -> RvolEngine:
         return RvolEngine(

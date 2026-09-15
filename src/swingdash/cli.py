@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import datetime as dt
 import getpass
 import os
 import platform
@@ -97,7 +98,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     from swingdash.ui.app import SwingDashApp
 
     settings = load_settings()
-    configure_logging(settings.paths, settings.upstox_token)
+    configure_logging(settings.paths, settings.upstox_token, settings.dhan_access_token)
     if not settings.upstox_token:
         print(
             f"error: no Upstox token configured - run `swingdash setup` (looked in {settings.paths.env_file})"
@@ -137,7 +138,7 @@ def _setup(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     settings = load_settings()
     settings.paths.ensure()
-    configure_logging(settings.paths, settings.upstox_token)
+    configure_logging(settings.paths, settings.upstox_token, settings.dhan_access_token)
     print(f"config:   {settings.paths.config_dir}")
     print(f"data:     {settings.paths.data_dir}")
 
@@ -198,6 +199,21 @@ def _doctor(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     token = settings.upstox_token
     line("token", f"****{token[-4:]}" if token else "missing - run `swingdash setup`", bool(token))
     line("config", str(paths.env_file), True)
+    dhan_token = settings.dhan_access_token
+    if dhan_token:
+        from swingdash.adapters.dhan.parsers import token_expiry
+
+        expiry = token_expiry(dhan_token)
+        valid = expiry is None or expiry > dt.datetime.now(expiry.tzinfo)
+        until = f", valid until {expiry:%d %b %H:%M}" if expiry else ""
+        line(
+            "dhan",
+            f"client {settings.dhan_client_id or '?'}, token ****{dhan_token[-4:]}{until}"
+            + ("" if valid else " - EXPIRED: paste a new one in the Risk tab (B)"),
+            valid,
+        )
+    else:
+        line("dhan", "not connected (optional - Risk tab, B)", True)
 
     if paths.database.is_file():
         db = Database(paths.database)
@@ -279,7 +295,7 @@ def _refresh(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     from swingdash.settings import load_settings
 
     settings = load_settings()
-    configure_logging(settings.paths, settings.upstox_token)
+    configure_logging(settings.paths, settings.upstox_token, settings.dhan_access_token)
     include_sectors = not args.no_sectors
     if include_sectors and not settings.upstox_token:
         print("sectors: skipped - no Upstox token (run `swingdash setup`)")
@@ -355,7 +371,7 @@ def _replay(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     from swingdash.settings import load_settings
 
     settings = load_settings()
-    configure_logging(settings.paths, settings.upstox_token)
+    configure_logging(settings.paths, settings.upstox_token, settings.dhan_access_token)
     services = build_services(settings)
     try:
         results = [

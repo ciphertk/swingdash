@@ -18,6 +18,10 @@ from platformdirs import PlatformDirs
 
 APP_NAME = "swingdash"
 TOKEN_ENV = "UPSTOX_ANALYTICS_TOKEN"
+# Dhan (read-only portfolio sync). The token lasts 24h and is renewed and
+# written back by swingdash while it's still valid.
+DHAN_CLIENT_ID_ENV = "DHAN_CLIENT_ID"
+DHAN_TOKEN_ENV = "DHAN_ACCESS_TOKEN"
 HOME_ENV = "SWINGDASH_HOME"
 
 DEFAULT_MSWING_INDEX_KEY = "NSE_INDEX|NIFTY MIDSML 400"
@@ -93,6 +97,8 @@ class Settings:
     paths: Paths
     upstox_token: str = field(default="", repr=False)
     mswing_index_key: str = DEFAULT_MSWING_INDEX_KEY
+    dhan_client_id: str = ""
+    dhan_access_token: str = field(default="", repr=False)
 
     def require_token(self) -> str:
         if not self.upstox_token:
@@ -118,4 +124,6 @@ def load_settings(environ: Mapping[str, str] | None = None, cwd: Path | None = N
         paths=paths,
         upstox_token=values.get(TOKEN_ENV, "").strip(),
         mswing_index_key=values.get("DEFAULT_MSWING_INDEX_KEY", DEFAULT_MSWING_INDEX_KEY),
+        dhan_client_id=values.get(DHAN_CLIENT_ID_ENV, "").strip(),
+        dhan_access_token=values.get(DHAN_TOKEN_ENV, "").strip(),
     )

@@ -27,6 +27,7 @@ class InstrumentService:
         self._symbol_to_key: dict[str, str] = {}
         self._symbol_to_isin: dict[str, str] = {}
         self._by_symbol: dict[str, dict[str, str]] = {}
+        self._isin_to_symbol: dict[str, str] = {}
 
     def available(self) -> bool:
         return self._equities_path.is_file()
@@ -40,6 +41,10 @@ class InstrumentService:
         """The Fundamentals API is keyed by ISIN, not instrument key."""
         self._ensure_loaded()
         return self._symbol_to_isin.get(trading_symbol.strip().upper())
+
+    def find_symbol_by_isin(self, isin: str) -> str | None:
+        self._ensure_loaded()
+        return self._isin_to_symbol.get(isin.strip().upper())
 
     def find_series(self, trading_symbol: str) -> str | None:
         """NSE series (EQ, BE, SM, ...); None if unknown or cached before series were kept."""
@@ -101,6 +106,9 @@ class InstrumentService:
                 e["trading_symbol"]: e["isin"] for e in equities if e.get("isin")
             }
             self._by_symbol = {e["trading_symbol"]: e for e in equities}
+            self._isin_to_symbol = {
+                e["isin"]: e["trading_symbol"] for e in equities if e.get("isin")
+            }
             self._indices = indices
             self._equities = equities
 

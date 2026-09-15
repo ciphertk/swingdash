@@ -83,6 +83,12 @@ class BrokerAccount:
 
 
 @dataclass(frozen=True)
+class BrokerCredentials:
+    client_id: str
+    access_token: str = field(repr=False)
+
+
+@dataclass(frozen=True)
 class BrokerToken:
     token: str = field(repr=False)
     valid_until: dt.datetime | None

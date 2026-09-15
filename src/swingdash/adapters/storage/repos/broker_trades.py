@@ -39,7 +39,8 @@ class BrokerTradeRepository:
                     (broker, trade_id, symbol, isin, side, product, quantity, price, traded_at, charges)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(broker, trade_id) DO UPDATE SET
-                    symbol = excluded.symbol,
+                    symbol = CASE WHEN excluded.symbol = '' THEN broker_trades.symbol
+                                  ELSE excluded.symbol END,
                     isin = COALESCE(excluded.isin, broker_trades.isin),
                     side = excluded.side,
                     product = excluded.product,

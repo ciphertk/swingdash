@@ -14,23 +14,17 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
 from typing import Any
 
 import requests
 
+from swingdash.domain.broker import BrokerCredentials
 from swingdash.domain.errors import BrokerAuthError, BrokerUnavailableError
 
 BASE_URL = "https://api.dhan.co/v2"
 MIN_INTERVAL_SECONDS = 0.5
 TIMEOUT = (10.0, 30.0)
 _AUTH_CODES = {"DH-901", "DH-902"}
-
-
-@dataclass(frozen=True)
-class DhanCredentials:
-    client_id: str
-    access_token: str = field(repr=False)
 
 
 class DhanFormatError(ValueError):
@@ -40,7 +34,7 @@ class DhanFormatError(ValueError):
 class DhanHttp:
     def __init__(
         self,
-        credentials: Callable[[], DhanCredentials | None],
+        credentials: Callable[[], BrokerCredentials | None],
         min_interval: float = MIN_INTERVAL_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,

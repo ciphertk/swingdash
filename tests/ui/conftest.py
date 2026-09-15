@@ -18,8 +18,10 @@ from swingdash.bootstrap import build_services
 from swingdash.domain.bars import DailyBar
 from swingdash.domain.calendar import IST
 from swingdash.domain.rvol.types import Baseline
+from swingdash.services.broker_credentials import BrokerCredentialsStore
 from swingdash.services.container import Services
 from swingdash.settings import load_settings
+from tests.fakes.broker import FakeBroker
 from tests.fakes.chartink import FakeChartinkSource
 from tests.fakes.feed import FakeFeedFactory
 from tests.fakes.sources import (
@@ -76,11 +78,17 @@ def quotes() -> FakeQuotes:
 
 
 @pytest.fixture
+def broker() -> FakeBroker:
+    return FakeBroker()
+
+
+@pytest.fixture
 def services(
     feed: FakeFeedFactory,
     securities_source: FakeSecuritiesSource,
     chartink_source: FakeChartinkSource,
     quotes: FakeQuotes,
+    broker: FakeBroker,
 ) -> Iterator[Services]:
     settings = load_settings()
     settings.paths.ensure()
@@ -109,6 +117,10 @@ def services(
         securities_source=securities_source,
         chartink_source=chartink_source,
         quotes=quotes,
+        broker_source=broker,
+        broker_credentials=BrokerCredentialsStore(
+            settings.paths.env_file, "DHAN_CLIENT_ID", "DHAN_ACCESS_TOKEN", persist=False
+        ),
         clock=lambda: SUNDAY,
     )
     curve = array("d", (1_000 * (m + 1) / 375 for m in range(375)))

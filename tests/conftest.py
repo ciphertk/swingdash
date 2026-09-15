@@ -14,7 +14,8 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Never let a test read or write the real user data directories or token."""
     home = tmp_path / "swingdash-home"
     monkeypatch.setenv("SWINGDASH_HOME", str(home))
-    monkeypatch.delenv("UPSTOX_ANALYTICS_TOKEN", raising=False)
+    for name in ("UPSTOX_ANALYTICS_TOKEN", "DHAN_CLIENT_ID", "DHAN_ACCESS_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(tmp_path)
     return home
 

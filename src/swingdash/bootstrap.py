@@ -11,11 +11,13 @@ from collections.abc import Callable
 from importlib.resources import files
 
 from swingdash.adapters.chartink.source import ChartinkSource
+from swingdash.adapters.dhan.source import DhanSource
 from swingdash.adapters.nse.source import NseSecuritiesSource
 from swingdash.adapters.storage.db import Database
 from swingdash.adapters.storage.migrations import migrate
 from swingdash.adapters.storage.repos.app_state import AppStateRepository
 from swingdash.adapters.storage.repos.baselines import BaselineRepository
+from swingdash.adapters.storage.repos.broker_trades import BrokerTradeRepository
 from swingdash.adapters.storage.repos.candles import CandleRepository
 from swingdash.adapters.storage.repos.chartink import ChartinkRepository
 from swingdash.adapters.storage.repos.fundamentals import FundamentalsRepository
@@ -29,14 +31,18 @@ from swingdash.adapters.upstox.feed import UpstoxFeedTransport
 from swingdash.adapters.upstox.fundamentals import UpstoxFundamentals
 from swingdash.adapters.upstox.history import UpstoxHistory
 from swingdash.adapters.upstox.quotes import UpstoxQuotes
+from swingdash.domain.broker import BrokerCredentials
+from swingdash.services.broker_credentials import BrokerCredentialsStore
 from swingdash.services.calendar import CalendarService
 from swingdash.services.candles import CandleService
 from swingdash.services.chartink import ChartinkService
 from swingdash.services.container import Services
+from swingdash.services.dhan_sync import DhanSyncService
 from swingdash.services.fundamentals import FundamentalsService
 from swingdash.services.instruments import InstrumentService
 from swingdash.services.market_data_hub import MarketDataHub
 from swingdash.services.ports import (
+    BrokerSourcePort,
     CalendarSource,
     ChartinkSourcePort,
     FeedFactory,
@@ -55,7 +61,7 @@ from swingdash.services.risk_settings import RiskSettingsService
 from swingdash.services.rvol.baselines import BaselineService
 from swingdash.services.securities import SecuritiesService
 from swingdash.services.watchlists import WatchlistService
-from swingdash.settings import Settings
+from swingdash.settings import DHAN_CLIENT_ID_ENV, DHAN_TOKEN_ENV, Settings
 
 
 def default_watchlist_symbols() -> list[str]:
@@ -73,6 +79,8 @@ def build_services(
     securities_source: SecuritiesSource | None = None,
     chartink_source: ChartinkSourcePort | None = None,
     quotes: QuoteSource | None = None,
+    broker_source: BrokerSourcePort | None = None,
+    broker_credentials: BrokerCredentialsStore | None = None,
     clock: Callable[[], dt.datetime] | None = None,
 ) -> Services:
     settings.paths.ensure()
@@ -114,6 +122,25 @@ def build_services(
     )
 
     hub = MarketDataHub(feed_factory or upstox_feed)
+    positions = PositionRepository(db)
+    risk = RiskService(
+        positions,
+        RiskSettingsService(AppStateRepository(db)),
+        instruments=instruments,
+        candles=candles,
+        securities=securities,
+        calendar=calendar,
+        hub=hub,
+        quotes=quotes or UpstoxQuotes(client),
+    )
+    credentials = broker_credentials or BrokerCredentialsStore(
+        settings.paths.env_file,
+        DHAN_CLIENT_ID_ENV,
+        DHAN_TOKEN_ENV,
+        BrokerCredentials(settings.dhan_client_id, settings.dhan_access_token)
+        if settings.dhan_access_token
+        else None,
+    )
 
     return Services(
         settings=settings,
@@ -136,14 +163,15 @@ def build_services(
             candles=candles,
             calendar=calendar,
         ),
-        risk=RiskService(
-            PositionRepository(db),
-            RiskSettingsService(AppStateRepository(db)),
+        risk=risk,
+        dhan=DhanSyncService(
+            broker_source or DhanSource(credentials.current),
+            credentials,
+            trades=BrokerTradeRepository(db),
+            positions=positions,
+            state=AppStateRepository(db),
             instruments=instruments,
-            candles=candles,
-            securities=securities,
             calendar=calendar,
-            hub=hub,
-            quotes=quotes or UpstoxQuotes(client),
+            risk=risk,
         ),
     )

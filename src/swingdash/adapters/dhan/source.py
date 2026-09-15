@@ -6,9 +6,10 @@ import datetime as dt
 from collections.abc import Callable
 
 from swingdash.adapters.dhan import parsers
-from swingdash.adapters.dhan.http import DhanCredentials, DhanHttp
+from swingdash.adapters.dhan.http import DhanHttp
 from swingdash.domain.broker import (
     BrokerAccount,
+    BrokerCredentials,
     BrokerDayPosition,
     BrokerHolding,
     BrokerToken,
@@ -25,7 +26,7 @@ class DhanSource:
     name = "dhan"
 
     def __init__(
-        self, credentials: Callable[[], DhanCredentials | None], http: DhanHttp | None = None
+        self, credentials: Callable[[], BrokerCredentials | None], http: DhanHttp | None = None
     ) -> None:
         self._credentials = credentials
         self._http = http or DhanHttp(credentials)

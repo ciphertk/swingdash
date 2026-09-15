@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from swingdash.logging_setup import configure_logging
+from swingdash.logging_setup import configure_logging, redact
 from swingdash.settings import MissingTokenError, load_settings
 
 
@@ -41,14 +41,17 @@ def test_missing_token_raises_actionable_error():
 
 def test_log_file_redacts_the_token():
     settings = load_settings()
-    configure_logging(settings.paths, secret="super-secret-token-value")
+    configure_logging(settings.paths, "super-secret-token-value")
     try:
         logging.getLogger("test").warning("auth header Bearer %s", "super-secret-token-value")
+        # A secret learned later (a renewed broker token) is scrubbed too.
+        redact("renewed-dhan-token")
+        logging.getLogger("test").warning("renewed to %s", "renewed-dhan-token")
         for handler in logging.getLogger().handlers:
             handler.flush()
         text = settings.paths.log_file.read_text(encoding="utf-8")
-        assert "super-secret" not in text
-        assert "Bearer ****" in text
+        assert "super-secret" not in text and "renewed-dhan" not in text
+        assert "Bearer ****" in text and "renewed to ****" in text
     finally:
         for handler in list(logging.getLogger().handlers):
             handler.close()
