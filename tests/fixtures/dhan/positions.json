@@ -1,0 +1,32 @@
+[
+  {
+    "dhanClientId": "1000000000",
+    "tradingSymbol": "TATAMOTORS",
+    "securityId": "3456",
+    "positionType": "LONG",
+    "exchangeSegment": "NSE_EQ",
+    "productType": "CNC",
+    "buyAvg": 700.5,
+    "buyQty": 10,
+    "costPrice": 700.5,
+    "sellAvg": 0,
+    "sellQty": 0,
+    "netQty": 10,
+    "realizedProfit": 0,
+    "unrealizedProfit": 12.5,
+    "dayBuyQty": 10,
+    "daySellQty": 0,
+    "drvExpiryDate": "0001-01-01 00:00:00",
+    "drvOptionType": null,
+    "drvStrikePrice": 0
+  },
+  {
+    "tradingSymbol": "NIFTY-Sep2026-25000-CE",
+    "securityId": "99999",
+    "exchangeSegment": "NSE_FNO",
+    "productType": "INTRADAY",
+    "netQty": 0,
+    "dayBuyQty": 75,
+    "daySellQty": 75
+  }
+]

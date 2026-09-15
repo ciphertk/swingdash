@@ -44,6 +44,7 @@ class BrokerTrade:
     price: float
     time: dt.datetime
     charges: float = 0.0  # all charges on this fill, when reported
+    security_id: str | None = None  # the broker's own id for the instrument
 
     @property
     def funding(self) -> str | None:
@@ -59,6 +60,32 @@ class BrokerHolding:
     quantity: int  # delivery + T1, excluding MTF
     avg_cost: float
     mtf_quantity: int = 0
+    security_id: str | None = None
+
+
+@dataclass(frozen=True)
+class BrokerDayPosition:
+    """A symbol traded today, as the broker's positions report it."""
+
+    symbol: str
+    security_id: str | None
+    product: str
+    net_quantity: int
+    day_buy_quantity: int
+    day_sell_quantity: int
+
+
+@dataclass(frozen=True)
+class BrokerAccount:
+    client_id: str
+    name: str
+    token_valid_until: dt.datetime | None
+
+
+@dataclass(frozen=True)
+class BrokerToken:
+    token: str = field(repr=False)
+    valid_until: dt.datetime | None
 
 
 @dataclass(frozen=True)

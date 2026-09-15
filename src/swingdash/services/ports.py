@@ -13,6 +13,13 @@ from collections.abc import Callable, Sequence
 from typing import Protocol
 
 from swingdash.domain.bars import DailyBar, MinuteBar
+from swingdash.domain.broker import (
+    BrokerAccount,
+    BrokerDayPosition,
+    BrokerHolding,
+    BrokerToken,
+    BrokerTrade,
+)
 from swingdash.domain.calendar import Holiday, Session
 from swingdash.domain.chartink import ChartinkRequest, ChartinkResult, DashboardDef, ScreenerDef
 from swingdash.domain.fundamentals import CompanyProfile
@@ -52,6 +59,27 @@ class ChartinkSourcePort(Protocol):
     def dashboard(self, url: str) -> DashboardDef: ...
 
     def close(self) -> None: ...
+
+
+class BrokerSourcePort(Protocol):
+    """
+    A broker account, read-only. Methods raise BrokerAuthError when the token
+    is rejected and BrokerUnavailableError otherwise.
+    """
+
+    name: str
+
+    def account(self) -> BrokerAccount: ...
+
+    def holdings(self) -> list[BrokerHolding]: ...
+
+    def day_positions(self) -> list[BrokerDayPosition]: ...
+
+    def trades_today(self) -> list[BrokerTrade]: ...
+
+    def trade_history(self, from_date: dt.date, to_date: dt.date) -> list[BrokerTrade]: ...
+
+    def renew_token(self) -> BrokerToken: ...
 
 
 class QuoteSource(Protocol):

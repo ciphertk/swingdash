@@ -1,0 +1,32 @@
+[
+  {
+    "exchange": "ALL",
+    "tradingSymbol": "GRAPHITE",
+    "securityId": "1234",
+    "isin": "INE371A01025",
+    "totalQty": 5,
+    "dpQty": 5,
+    "t1Qty": 0,
+    "mtf_t1_qty": 0,
+    "mtf_qty": 0,
+    "availableQty": 5,
+    "collateralQty": 0,
+    "avgCostPrice": 855.85,
+    "lastTradedPrice": 781.5
+  },
+  {
+    "exchange": "ALL",
+    "tradingSymbol": "HFCL",
+    "securityId": "21951",
+    "isin": "INE548A01028",
+    "totalQty": "40",
+    "dpQty": 30,
+    "t1Qty": 10,
+    "mtf_t1_qty": 0,
+    "mtf_qty": 20,
+    "availableQty": 40,
+    "collateralQty": 0,
+    "avgCostPrice": "101.2",
+    "lastTradedPrice": 104.3
+  }
+]

@@ -1,0 +1,23 @@
+[
+  {
+    "dhanClientId": "1000000000",
+    "orderId": "112111182045",
+    "exchangeOrderId": "15112111182938",
+    "exchangeTradeId": "15112111182938",
+    "transactionType": "BUY",
+    "exchangeSegment": "NSE_EQ",
+    "productType": "CNC",
+    "orderType": "LIMIT",
+    "tradingSymbol": "TATAMOTORS",
+    "customSymbol": "Tata Motors",
+    "securityId": "3456",
+    "tradedQuantity": 10,
+    "tradedPrice": 700.5,
+    "createTime": "2026-09-15 10:12:31",
+    "updateTime": "2026-09-15 10:12:31",
+    "exchangeTime": "2026-09-15 10:12:31",
+    "drvExpiryDate": "NA",
+    "drvOptionType": "NA",
+    "drvStrikePrice": 0
+  }
+]

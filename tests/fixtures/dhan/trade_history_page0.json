@@ -1,0 +1,43 @@
+[
+  {
+    "dhanClientId": "1000000000",
+    "orderId": "212212307731",
+    "exchangeOrderId": "76036896",
+    "exchangeTradeId": "407958",
+    "transactionType": "BUY",
+    "exchangeSegment": "NSE_EQ",
+    "productType": "CNC",
+    "orderType": "MARKET",
+    "tradingSymbol": null,
+    "customSymbol": "Graphite India",
+    "securityId": "1234",
+    "tradedQuantity": 5,
+    "tradedPrice": 855.85,
+    "isin": "INE371A01025",
+    "instrument": "EQUITY",
+    "sebiTax": 0.0004,
+    "stt": 4.28,
+    "brokerageCharges": 0,
+    "serviceTax": 0.14,
+    "exchangeTransactionCharges": 0.13,
+    "stampDuty": 0.64,
+    "createTime": "NA",
+    "updateTime": "NA",
+    "exchangeTime": "2026-09-09 11:02:46",
+    "drvExpiryDate": "NA",
+    "drvOptionType": "NA",
+    "drvStrikePrice": 0
+  },
+  {
+    "orderId": "212212307999",
+    "exchangeTradeId": "408001",
+    "transactionType": "SELL",
+    "exchangeSegment": "NSE_FNO",
+    "productType": "INTRADAY",
+    "tradingSymbol": null,
+    "securityId": "99999",
+    "tradedQuantity": 75,
+    "tradedPrice": 12.5,
+    "exchangeTime": "2026-09-09 14:00:00"
+  }
+]

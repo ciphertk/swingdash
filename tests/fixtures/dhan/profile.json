@@ -1,0 +1,10 @@
+{
+  "dhanClientId": "1000000000",
+  "dhanClientName": "TEST USER",
+  "tokenValidity": "2026-09-16 09:30:00",
+  "activeSegment": "Equity, Derivative",
+  "ddpi": "Active",
+  "mtf": "Active",
+  "dataPlan": "Deactive",
+  "dataValidity": "NA"
+}
