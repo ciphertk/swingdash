@@ -374,3 +374,25 @@ async def test_payload_alone_shows_columns_and_how_to_name_them(services, charti
         assert headers[:6] == ["SYMBOL", "NAME", "CLOSE", "% CHG", "VOLUME", "_7B5FD"]
         assert not any("CONDITIONAL" in h for h in headers)
         assert "column names: add the screener's link" in _status(app)
+
+
+async def test_breadth_dashboard_shows_a_row_per_day(services, chartink_source):
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(180, 45)) as pilot:
+        await _open(app, pilot)
+        await _add(app, pilot, "https://chartink.com/dashboard/164261")
+        await until(pilot, lambda: isinstance(app.screen, DashboardPicker))
+        await pilot.click("#import")  # the two tables: sectors and MBI
+        await until(pilot, lambda: len(chartink_source.requests) == 2)
+
+        _tab(app)._item_tree.focus()
+        await pilot.press("down")  # sectors -> MBI
+        await until(pilot, lambda: _table(app).row_count == 6)
+        assert "MBI" in _header(app)
+        assert _headers(app)[:3] == ["DATE", "52WH", "52WL"]
+        rows = _rows(app)
+        assert [r[0] for r in rows[:2]] == ["2026-09-15", "2026-09-11"]
+        assert rows[0][4] == "14.34"  # a share of stocks, not a signed change
+        assert _cell_style(app, 0, 4) == ""
+        assert "one row per day" in _status(app)
+        assert [r.fields["size"] for r in chartink_source.requests] == ["1", "375"]

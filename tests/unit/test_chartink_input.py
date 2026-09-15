@@ -79,7 +79,7 @@ def test_field_lines_from_devtools_view_parsed():
     assert _request(text).fields == {"scan_clause": CLAUSE, "debug_clause": "groupcount( 1 )"}
 
 
-def test_a_widget_payload_always_asks_for_just_the_latest_values():
+def test_an_ungrouped_widget_payload_keeps_its_history_size():
     text = "query=select+latest+Close+as+%27Close%27+WHERE+%7Bcash%7D+1+%3D+1&use_live=1&limit=50&size=100"
     request = _request(text)
     assert request.kind is ChartinkKind.WIDGET
@@ -87,8 +87,16 @@ def test_a_widget_payload_always_asks_for_just_the_latest_values():
         "query": "select latest Close as 'Close' WHERE {cash} 1 = 1",
         "use_live": "1",
         "limit": "50",  # what the user asked for
-        "size": "1",  # only the latest bar is displayed
+        "size": "100",  # a series over time: its history is the data
     }
+
+
+def test_a_grouped_widget_payload_asks_for_just_the_latest_values():
+    text = (
+        "query=select+latest+Close+as+%27Close%27+WHERE+%7Bcash%7D+1+%3D+1+GROUP+BY+symbol"
+        "&use_live=1&limit=50&size=100"
+    )
+    assert _request(text).fields["size"] == "1"
 
 
 @pytest.mark.parametrize(
@@ -132,3 +140,22 @@ def test_a_screener_link_followed_by_its_payload():
 def test_a_link_followed_by_the_wrong_kind_of_paste_is_rejected(text):
     with pytest.raises(ChartinkInputError):
         parse_user_input(text)
+
+
+@pytest.mark.parametrize(
+    ("query", "size", "sent"),
+    [
+        ("select 1 as 'x' WHERE {cash} 1 = 1 GROUP BY sector", "375", "1"),
+        ("select 1 as 'x' WHERE {cash} 1 = 1 group by symbol", "1", "1"),
+        ("select 1 as 'x' WHERE {cash} 1 = 1 ORDER BY 1 desc", "1", "375"),  # saved before
+        ("select 1 as 'x' WHERE {cash} 1 = 1 ORDER BY 1 desc", "30", "30"),
+    ],
+)
+def test_runnable_widget_requests(query, size, sent):
+    request = ChartinkRequest(ChartinkKind.WIDGET, {"query": query, "size": size})
+    assert request.runnable().fields["size"] == sent
+
+
+def test_screener_requests_run_as_saved():
+    request = ChartinkRequest(ChartinkKind.SCREENER, {"scan_clause": CLAUSE})
+    assert request.runnable() is request

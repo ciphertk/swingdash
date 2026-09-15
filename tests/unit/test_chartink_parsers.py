@@ -68,10 +68,44 @@ def test_a_sector_widget_is_not_a_stock_list():
     assert result.rows[1].values["advancespercentage"] == pytest.approx(61.7647)
 
 
-def test_an_aggregate_widget_has_one_row_and_no_grouping():
+def test_an_ungrouped_widget_with_one_bar_is_one_dated_row():
     result = parse_widget_response(_json("widget_nogroups.json"))
-    assert result.group_by is None
-    assert [(r.key, r.values) for r in result.rows] == [("*no-groups*", {"%": 13.2075})]
+    assert result.group_by == "date"
+    # An intraday bar keeps its time.
+    assert [(r.key, r.values) for r in result.rows] == [("2026-09-11 15:14", {"%": 13.2075})]
+
+
+def test_an_ungrouped_widget_becomes_one_row_per_day_newest_first():
+    # MBI from dashboard 164261 (real capture, trimmed to 6 days).
+    result = parse_widget_response(_json("widget_trend.json"))
+    assert result.group_by == "date" and not result.is_stock_list
+    assert result.columns == ("52wh", "52wl", "+4.5%", "-4.5%", "f10")
+    # Mon 14 Sep 2026 was a market holiday, so there's no row for it.
+    assert [r.key for r in result.rows] == [
+        "2026-09-15",
+        "2026-09-11",
+        "2026-09-10",
+        "2026-09-09",
+        "2026-09-08",
+        "2026-09-07",
+    ]
+    assert result.rows[0].values["-4.5%"] == pytest.approx(14.3376)
+    assert result.rows[-1].values["f10"] is None  # 1.7e308 means "no value"
+
+
+def test_an_empty_widget_response_says_so():
+    with pytest.raises(ChartinkFormatError, match="no data"):
+        parse_widget_response([])
+
+
+def test_dashboard_widgets_keep_their_history_size():
+    dashboard = parse_dashboard_page(_text("dashboard_breadth_page.html"))
+    sizes = {w.name: (w.size, w.request().fields["size"]) for w in dashboard.widgets}
+    assert sizes == {
+        "Sectors Above Key Weekly EMA": (375, "1"),  # grouped by sector: latest only
+        "4.5R": (30, "30"),
+        "MBI": (375, "375"),
+    }
 
 
 def test_a_series_is_reduced_to_its_last_value():

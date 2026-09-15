@@ -6,9 +6,13 @@ Shapes (verified Sep 2026):
 - /screener/process: {"data": [{"sr", "nsecode", "name", "bsecode", "close",
   "per_chg", "volume"}], ...} - or, when the request has a column_clause,
   "scan-column-<id>" values with "<id>-conditional-filters-color" flags.
-- /widget/process: {"metaData": [{"columnAliases", "groups", "lastUpdateTime",
-  "availableLimit", ...}], "groupData": [{"name", "results": [{alias: [values]}]}]}
-  - each alias holds one value per bar; the last one is the latest.
+- /widget/process: {"metaData": [{"columnAliases", "groups", "tradeTimes",
+  "lastUpdateTime", "availableLimit", ...}], "groupData": [{"name", "results":
+  [{alias: [values]}]}]}
+  - each alias holds one value per bar (`tradeTimes`, epoch ms); the last is
+    the latest. Grouped widgets keep the latest; an ungrouped one (a single
+    "*no-groups*" group) becomes one row per bar, newest first.
+  - 1.7e308 (DBL_MAX) stands for "no value" (e.g. a division by zero).
 - dashboard page: `:dashboard` and `:widgets` JSON attributes on the Vue root.
   `:template-widgets` is Chartink's starter set on every page, not the dashboard's.
 - screener page: `:scan-json` with the ready clause in `atlas_query`, and the
@@ -44,6 +48,8 @@ _SCREENER_HIDDEN = {"sr"}
 # flag '<id>-conditional-filters-color' (verified Sep 2026).
 _SCAN_COLUMN = re.compile(r"^scan-column-(.+)$")
 _COLOR_FIELD = re.compile(r"^(.+)-conditional-filters-color$")
+# Chartink's "no value": DBL_MAX (1.7976931348623157e308), shown as 1.7e308.
+_NO_VALUE = 1e308
 
 
 def parse_screener_response(payload: Any) -> ChartinkResult:
@@ -77,6 +83,9 @@ def parse_screener_response(payload: Any) -> ChartinkResult:
 
 
 def parse_widget_response(payload: Any) -> ChartinkResult:
+    if payload == []:
+        # Seen for a grouped widget asked for long history: too big to answer.
+        raise ChartinkFormatError("Chartink returned no data for this widget")
     try:
         meta: dict[str, Any] = payload["metaData"][0]
         aliases: list[str] = list(meta["columnAliases"])
@@ -85,20 +94,24 @@ def parse_widget_response(payload: Any) -> ChartinkResult:
     except (KeyError, IndexError, TypeError) as exc:
         raise ChartinkFormatError("unexpected widget response shape") from exc
 
-    rows: list[ChartinkRow] = []
-    for group in group_data:
-        values: dict[str, Value] = {}
-        for result in group.get("results") or []:
-            for alias, series in result.items():
-                latest = series[-1] if isinstance(series, list) and series else series
-                values[alias] = None if isinstance(latest, list) else _value(latest)
-        rows.append(ChartinkRow(str(group.get("name", "")), values))
+    times = meta.get("tradeTimes")
+    if not groups and len(group_data) == 1 and isinstance(times, list) and times:
+        rows = _trend_rows(group_data[0], [t for t in times if isinstance(t, int | float)])
+        group_by: str | None = "date"
+    else:
+        rows = []
+        for group in group_data:
+            values: dict[str, Value] = {}
+            for alias, series in _series(group).items():
+                values[alias] = _value(series[-1]) if series else None
+            rows.append(ChartinkRow(str(group.get("name", "")), values))
+        group_by = groups[0] if groups else None
 
     updated = meta.get("lastUpdateTime")
     return ChartinkResult(
         columns=tuple(aliases),
         rows=tuple(rows),
-        group_by=groups[0] if groups else None,
+        group_by=group_by,
         data_time=(
             dt.datetime.fromtimestamp(updated / 1000, IST)
             if isinstance(updated, int | float)
@@ -108,6 +121,31 @@ def parse_widget_response(payload: Any) -> ChartinkResult:
         if isinstance(meta.get("availableLimit"), int)
         else None,
     )
+
+
+def _series(group: dict[str, Any]) -> dict[str, list[Any]]:
+    series: dict[str, list[Any]] = {}
+    for result in group.get("results") or []:
+        for alias, values in result.items():
+            series[alias] = values if isinstance(values, list) else [values]
+    return series
+
+
+def _trend_rows(group: dict[str, Any], times: list[float]) -> list[ChartinkRow]:
+    """One row per bar, newest first, keyed by its date (and time, for intraday bars)."""
+    stamps = [dt.datetime.fromtimestamp(t / 1000, IST) for t in times]
+    daily = all(s.time() == dt.time(0, 0) for s in stamps)
+    series = _series(group)
+    rows: list[ChartinkRow] = []
+    for index in reversed(range(len(stamps))):
+        values: dict[str, Value] = {}
+        for alias, points in series.items():
+            # Series and times line up from the latest bar backwards.
+            position = len(points) - len(stamps) + index
+            values[alias] = _value(points[position]) if 0 <= position < len(points) else None
+        label = stamps[index].strftime("%Y-%m-%d" if daily else "%Y-%m-%d %H:%M")
+        rows.append(ChartinkRow(label, values))
+    return rows
 
 
 def parse_dashboard_page(page: str) -> DashboardDef:
@@ -177,11 +215,14 @@ def _widget(raw: dict[str, Any]) -> WidgetDef:
         except ValueError:
             details = None
     result_type = details.get("resultType") if isinstance(details, dict) else None
+    groups = details.get("groups") if isinstance(details, dict) else None
+    size = groups.get("size") if isinstance(groups, dict) else None
     return WidgetDef(
         id=int(raw.get("id", 0)),
         name=str(raw.get("name") or f"Widget {raw.get('id')}"),
         query=str(raw["query"]),
         result_type=str(result_type) if result_type else None,
+        size=int(size) if isinstance(size, int | str) and str(size).isdigit() else None,
     )
 
 
@@ -198,6 +239,8 @@ def _json_attribute(page: str, name: str) -> Any:
 def _value(value: Any) -> Value:
     if value is None or isinstance(value, bool):
         return None if value is None else str(value)
+    if isinstance(value, float) and not abs(value) < _NO_VALUE:  # also NaN
+        return None
     if isinstance(value, int | float):
         return value
     return str(value)

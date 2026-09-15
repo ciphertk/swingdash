@@ -22,9 +22,20 @@ from urllib.parse import parse_qsl
 
 Value = float | int | str | None
 
-# Widget requests only need the latest value of each column; Chartink sends a
-# point per bar otherwise. 1000 rows is honoured (verified Sep 2026).
+# A widget's `size` is how many bars of history each value comes with, and
+# `limit` how many groups. Grouped widgets (GROUP BY symbol/sector/...) show
+# only the latest bar - asking for history there returns `[]` for big ones.
+# Widgets without GROUP BY are one series over time (market breadth, MBI):
+# their history is the data, one row per bar. 1000 groups is honoured, 375
+# is Chartink's default history (verified Sep 2026).
 WIDGET_DEFAULTS = {"use_live": "1", "limit": "1000", "size": "1"}
+TREND_SIZE = "375"
+_GROUP_BY = re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)
+
+
+def is_grouped_query(query: str) -> bool:
+    return bool(_GROUP_BY.search(query))
+
 
 _KNOWN_FIELDS = (
     "scan_clause",
@@ -95,6 +106,21 @@ class ChartinkRequest:
     kind: ChartinkKind
     fields: dict[str, str]
 
+    def runnable(self) -> ChartinkRequest:
+        """
+        The request to actually send. Widgets: a grouped one asks for just
+        the latest bar; an ungrouped one for its history (TREND_SIZE unless
+        it names its own). Items saved before this rule get it too.
+        """
+        if self.kind is not ChartinkKind.WIDGET:
+            return self
+        fields = {**WIDGET_DEFAULTS, **self.fields}
+        if is_grouped_query(fields.get("query", "")):
+            fields["size"] = "1"
+        elif fields.get("size", "").strip() in ("", "0", "1"):
+            fields["size"] = TREND_SIZE
+        return self if fields == self.fields else ChartinkRequest(self.kind, fields)
+
 
 @dataclass(frozen=True)
 class ImportTarget:
@@ -137,13 +163,17 @@ class WidgetDef:
     name: str
     query: str
     result_type: str | None  # table | barchart | areachart ...
+    size: int | None = None  # bars of history the widget shows on Chartink
 
     @property
     def is_table(self) -> bool:
         return self.result_type == "table"
 
     def request(self) -> ChartinkRequest:
-        return ChartinkRequest(ChartinkKind.WIDGET, {"query": self.query, **WIDGET_DEFAULTS})
+        fields = {"query": self.query, **WIDGET_DEFAULTS}
+        if self.size and self.size > 0:
+            fields["size"] = str(self.size)
+        return ChartinkRequest(ChartinkKind.WIDGET, fields).runnable()
 
 
 @dataclass(frozen=True)
@@ -255,9 +285,8 @@ def parse_user_input(text: str) -> ChartinkRequest | ImportTarget:
 
 def _to_request(fields: dict[str, str]) -> ChartinkRequest:
     if fields.get("query", "").strip():
-        # size=1: only the latest value per column is shown, whatever was pasted.
-        merged = {**WIDGET_DEFAULTS, **fields, "size": "1"}
-        return ChartinkRequest(ChartinkKind.WIDGET, merged)
+        merged = {**WIDGET_DEFAULTS, **fields}
+        return ChartinkRequest(ChartinkKind.WIDGET, merged).runnable()
     if fields.get("scan_clause", "").strip():
         return ChartinkRequest(ChartinkKind.SCREENER, fields)
     raise ChartinkInputError("The payload has no scan_clause (screener) or query (widget).")

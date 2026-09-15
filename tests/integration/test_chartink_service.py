@@ -287,6 +287,22 @@ def test_a_widget_payload_cannot_stand_in_for_a_screener(chartink):
         service.add_screener(service.fetch_screener(url), url, payload=widget)
 
 
+def test_widgets_saved_with_latest_only_now_run_with_their_history(chartink):
+    service, source, _ = chartink
+    # As stored before trend widgets were understood: size forced to 1.
+    old = ChartinkRequest(
+        ChartinkKind.WIDGET,
+        {"query": "select 1 as 'MBI' WHERE {cash} 1 = 1", "use_live": "1", "size": "1"},
+    )
+    item = service.add("MBI", old)
+    _run(service, item.id)
+
+    assert source.requests[-1].fields["size"] == "375"
+    saved = service.get(item.id)
+    assert saved is not None and saved.result is not None
+    assert saved.result.group_by == "date" and len(saved.result.rows) == 6
+
+
 def test_rename_and_delete(chartink):
     service, _, _ = chartink
     item = service.add("Old", SCREENER)

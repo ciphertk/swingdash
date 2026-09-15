@@ -25,6 +25,7 @@ def _json(name: str) -> object:
 class FakeChartinkSource:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []  # (kind or "page", detail)
+        self.requests: list[ChartinkRequest] = []  # exactly what run() was sent
         # Force a result (or an exception) for requests whose main field contains a key.
         self.scripted: dict[str, ChartinkResult | Exception] = {}
         self.release = threading.Event()  # set it to let a gated run finish
@@ -34,6 +35,7 @@ class FakeChartinkSource:
     def run(self, request: ChartinkRequest, referer: str | None = None) -> ChartinkResult:
         main = request.fields.get("scan_clause") or request.fields.get("query") or ""
         self.calls.append((request.kind.value, main))
+        self.requests.append(request)
         self.release.wait(5)
         for needle, outcome in self.scripted.items():
             if needle in main:
@@ -48,7 +50,9 @@ class FakeChartinkSource:
             return parsers.parse_widget_response(_json("widget_table.json"))
         if "GROUP BY sector" in main:
             return parsers.parse_widget_response(_json("widget_sector.json"))
-        return parsers.parse_widget_response(_json("widget_nogroups.json"))
+        if request.fields.get("size", "1") == "1":
+            return parsers.parse_widget_response(_json("widget_nogroups.json"))
+        return parsers.parse_widget_response(_json("widget_trend.json"))  # breadth history
 
     def screener(self, url: str) -> ScreenerDef:
         self.calls.append(("page", url))
@@ -58,7 +62,9 @@ class FakeChartinkSource:
 
     def dashboard(self, url: str) -> DashboardDef:
         self.calls.append(("page", url))
-        return parsers.parse_dashboard_page((FIXTURES / "dashboard_page.html").read_text("utf-8"))
+        # 164261 is a market-breadth dashboard (MBI, 4.5R, sectors).
+        page = "dashboard_breadth_page.html" if "164261" in url else "dashboard_page.html"
+        return parsers.parse_dashboard_page((FIXTURES / page).read_text("utf-8"))
 
     def close(self) -> None:
         self.closed = True

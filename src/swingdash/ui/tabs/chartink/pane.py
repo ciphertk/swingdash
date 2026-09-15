@@ -712,7 +712,11 @@ class ChartinkTab(TabBase):
                 cells.key_cell(row.key, enriched.symbol is not None),
                 *(
                     cells.value_cell(
-                        c, row.values.get(c), specs.get(c), row.values.get(color_key(c))
+                        c,
+                        row.values.get(c),
+                        specs.get(c),
+                        row.values.get(color_key(c)),
+                        stock_list=result.is_stock_list,
                     )
                     for c in columns
                 ),
@@ -832,6 +836,8 @@ class ChartinkTab(TabBase):
                 text.append("bands: fetch them once in the Securities tab (R)  ", style="yellow")
             if view.history_pending:
                 text.append("Burst Power loading history...  ", style="yellow")
+            elif view.item.result.group_by == "date":
+                text.append("one row per day, newest first  ", style="grey50")
             elif not view.item.result.is_stock_list:
                 text.append("not a stock list - no Band/Burst columns  ", style="grey50")
             if any(cells.unnamed(c, view.item.columns.get(c)) for c in view.item.result.columns):

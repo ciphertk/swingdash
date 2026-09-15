@@ -70,14 +70,23 @@ def _is_change(column: str) -> bool:
 
 
 def value_cell(
-    column: str, value: Value, spec: ColumnSpec | None = None, flag: Value = None
+    column: str,
+    value: Value,
+    spec: ColumnSpec | None = None,
+    flag: Value = None,
+    *,
+    stock_list: bool = True,
 ) -> Text:
-    """`spec`/`flag`: the column's Chartink colours and this row's colour flag, when known."""
+    """
+    `spec`/`flag`: the column's Chartink colours and this row's colour flag,
+    when known. `stock_list`: price-change columns get +/- colours; in
+    breadth/sector widgets "%" columns are shares of stocks, not changes.
+    """
     if value is None or value == "":
         return _missing()
     if isinstance(value, str):
         return Text(value)
-    change = _is_change(column)
+    change = stock_list and _is_change(column)
     if change:
         text = f"{value:+,.2f}"
         style = "green" if value >= 0 else "red"

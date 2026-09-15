@@ -244,9 +244,18 @@ No public API: we replay the website's own requests, anonymously. Verified
 - **Widget:** `POST /widget/process` form `query` (`select ... GROUP BY ...`),
   `use_live=1`, `limit`, `size` -> `{metaData:[{columnAliases, groups,
   lastUpdateTime(ms), availableLimit}], groupData:[{name, results:[{alias:
-  [values...]}]}]}`. The last value of each series is the latest; we force
-  `size=1`. `limit=1000` is honoured. `groups` is `["symbol"]`, a
-  sector/industry/marketcapname grouping, or empty (one `*no-groups*` row).
+  [values...]}]}], tradeTimes}`: each value is a series, one point per bar
+  (`size` bars, aligned with `tradeTimes`, epoch ms; `limit` = groups).
+  `limit=1000` is honoured. `groups` is `["symbol"]`, a
+  sector/industry/marketcapname grouping, or empty (one `*no-groups*` group).
+  **Grouped** widgets show the latest bar (`size=1`; a big grouped widget
+  asked for 375 bars returns `[]`). **Ungrouped** ones (breadth, MBI - e.g.
+  dashboard 164261) are time series: request their own `size` (default 375)
+  and show one row per bar, newest first, `group_by="date"`.
+  `ChartinkRequest.runnable()` applies this at run time, so items saved with
+  `size=1` are fixed too. `1.7e308` (DBL_MAX) means "no value". A widget
+  counting `{<scan id>}` (a saved scan as universe) returned all zeros
+  anonymously.
 - **Pages:** a dashboard page embeds `:dashboard` (`id, name, is_private`)
   and `:widgets` (the dashboard's own; `jsondetails.resultType` = table /
   barchart / areachart). Ignore `:template-widgets` - Chartink's starter set

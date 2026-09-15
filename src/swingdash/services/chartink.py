@@ -257,7 +257,7 @@ class ChartinkService:
         if item is None:
             return
         try:
-            result = self._source.run(item.request, referer=item.source_url)
+            result = self._source.run(item.request.runnable(), referer=item.source_url)
         except Exception as exc:  # the adapter's errors carry user-facing messages
             logger.warning("chartink run failed for %s", item.name, exc_info=True)
             self._repo.save_error(item_id, str(exc) or type(exc).__name__)

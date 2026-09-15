@@ -147,8 +147,10 @@ What `a` accepts:
   in one paste: custom columns with their Chartink names and colours.
 - **A dashboard link** (`https://chartink.com/dashboard/130216`) - pick
   which widgets to import (tables are preselected); they're grouped under
-  the dashboard's name. Chart widgets come in as a table of their latest
-  values.
+  the dashboard's name. Widgets grouped by stock/sector show their latest
+  values; market-breadth widgets (MBI, advances %, stocks above SMAs - no
+  grouping) show one row per day, newest first, as far back as the widget
+  shows on Chartink.
 - **A request payload** - in the browser's DevTools, Network tab, run the
   screener/widget and copy the payload of `screener/process` or
   `widget/process`, in any of its forms ("view source", "view parsed", or a
