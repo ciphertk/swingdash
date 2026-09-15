@@ -45,6 +45,7 @@ src/swingdash/
   adapters/upstox/          the only home of upstox_client: client, feed, history, quotes, calendar, ...
   adapters/nse/             public NSE archive files + report endpoints (no login, no upstox_client)
   adapters/chartink/        http (CSRF session, pacing), parsers (responses, pages), source
+  adapters/dhan/            read-only Dhan Trading API v2: http (token header, pacing), parsers, source
   services/                 orchestration, threads, caches; ports.py = Protocols at test seams
     container.py            frozen Services DI container (built by bootstrap.build_services)
     market_data_hub.py      the ONE live feed, shared by every consumer
@@ -55,6 +56,8 @@ src/swingdash/
     daily_contexts.py       DailyContextLoader: cache-first prepare + paced delta fetches (Scanner, Chartink)
     chartink.py             saved items, sequential run queue, band/Burst enrichment
     risk.py, risk_settings.py  Risk tab: sizing context, positions, live prices; settings
+    dhan_sync.py            Dhan import: token renew, fills -> positions, plan linking
+    broker_credentials.py   broker client id + token in the user-dir .env (redacted in logs)
     preferences.py          remembered choices (Scanner benchmark index)
   ui/                       the only place textual is imported
     app.py                  shell: header, tab strip, global watchlist, CRUD actions
@@ -271,6 +274,33 @@ No public API: we replay the website's own requests, anonymously. Verified
   stored. A layout change should fail loudly in the parsers
   (`ChartinkFormatError`), confined to the tab.
 
+## Dhan - verified facts (adapters/dhan, services/dhan_sync.py)
+
+From Dhan's v2 docs (`docs/dhan-api-docs.md`); **not yet verified against a
+live account** - check shapes on the first real sync and update this.
+
+- Base `https://api.dhan.co/v2/`, header `access-token` (we also send
+  `client-id`). Errors `{errorType, errorCode, errorMessage}`; DH-901/902 =
+  bad or expired token (-> `BrokerAuthError`), DH-904 / 429 = rate limited.
+- Trading APIs are free; **static IP is only for placing/modifying orders**.
+  swingdash only GETs: `profile`, `holdings`, `positions`, `trades` (today),
+  `trades/{from}/{to}/{page}` (history, paged from 0; read in 90-day windows),
+  `RenewToken` (header `dhanClientId`).
+- Web tokens last 24h; `RenewToken` works only while the token is active.
+  We renew once < 20h are left, on every sync (and the tab auto-syncs daily).
+  Tokens are JWTs - `exp` gives the expiry when the API doesn't.
+- Trade history rows have `tradingSymbol: null` (name in `customSymbol`) -
+  map by `isin` (`InstrumentService.find_symbol_by_isin`). The trade book has
+  a symbol but no ISIN. Fill id = `orderId-exchangeTradeId` (same in both).
+  Times are IST without an offset; "NA" means none; charges are itemised on
+  history rows (brokerage, stt, stamp, exchange, sebi, service tax).
+- Holdings `totalQty` = delivered + T1 (today's fills aren't in it yet);
+  `mtf_qty`/`mtf_t1_qty` are MTF. Reconcile is FIFO per (symbol, funding),
+  CNC -> normal, MTF -> mtf, intraday ignored; holdings explain shares older
+  than the history; refs are `SYMBOL:funding:open:<first trade id>` /
+  `...:closed:<episode>:<sell day>`. Dhan owns qty/prices/dates/charges; the
+  user's stop/plan/note survive; hidden refs live in `broker_ignored`.
+
 ## RVOL (the metric in production)
 
 Baseline `curve[m]` = average cumulative volume at minute-of-session `m`
@@ -310,8 +340,14 @@ over the last 20 sessions, built from 1-minute candles.
   they were entered), can't be in the future, and exit ≥ taken.
 - **Heat** = Σ max(0, entry − stop) × qty over open positions; a trailed stop
   at/above entry contributes 0. `initial_stop` is kept for R multiples.
-- **Positions and capital are user-entered** (the Analytics Token can't read
-  holdings/funds). Capital isn't changed by closed trades.
+- **Positions are manual or imported** (Upstox's Analytics Token can't read
+  holdings; Dhan's API can). Capital is user-set; closed trades don't change it.
+- **Discipline** (`domain/risk/discipline.py`): breaches NO_STOP, STOP_BREACHED
+  (price < stop, still held), OVERSIZED (qty > planned_quantity), STOP_WIDENED
+  (stop < planned_stop). Risk: a usable stop -> max(0, entry − stop) × qty;
+  no stop or a breached one -> (price − assumed stop below the *price*) × qty,
+  flagged `assumed` (settings: ATR multiple or %). `planned_*` is set when a
+  trade is taken from the sizing form; the plan survives a Dhan import.
 - **Stops by ATR / recent low and liquidity** use cached daily candles;
   `RiskService` tops a symbol up once per session on a background thread.
   Band and surveillance come from `SecuritiesService.snapshot()`; series and

@@ -188,6 +188,7 @@ Things to know:
 | `C` | close it at an exit price and exit date (it moves to closed positions) |
 | `D` | delete it (a mistake, not an exit) |
 | `h` | switch the table between open and closed positions |
+| `B` (or the Dhan button) | sync positions from your Dhan account (connects first if needed) |
 | `Tab` | move between the form, the buttons and the table |
 
 Type a symbol and the form sizes the trade as you go. The entry fills in
@@ -213,12 +214,43 @@ take several locked sessions), exchange surveillance, trade-for-trade
 series, and a quantity that's a large share of the average daily volume.
 Band and surveillance come from the Securities tab's data - fetch it once.
 
-Upstox's Analytics Token can't read your holdings, so positions are the ones
-you add here, and capital is what you set (closing trades doesn't change it).
-The table shows live P&L, R multiple, open risk, **to stop** - what a fall
-from the current price to the stop would give back - and the date taken
-(closed positions: dates taken and exited, and days held). Dates can be
-typed as 09-09-2026, 9/9/26 or 9 Sep 2026.
+Positions are the ones you add here, or imported from **Dhan** (below).
+Capital is what you set (closing trades doesn't change it). The table shows
+the source (M manual, D Dhan), live P&L, R multiple, open risk, **to stop** -
+what a fall from the current price to the stop would give back - the plan
+check and the date taken (closed positions: dates taken and exited, days
+held, and Dhan's actual charges and net P&L). Dates can be typed as
+09-09-2026, 9/9/26 or 9 Sep 2026.
+
+**Not followed.** The PLAN column flags an open position with **no SL**, an
+**SL hit** (the price is below the stop and it's still held), **oversized**
+(more shares than you sized in this tab) or **SL wider** (the stop moved below
+the planned one). A position with no usable stop still counts in the heat:
+its risk is measured from the current price down to an *assumed* stop
+(1.5× ATR by default, or a % - see settings), shown as `~₹` in yellow and as
+"(x% assumed)" in the summary. Set a real stop with `m` and the flag clears.
+
+**Dhan.** Dhan's personal Trading API is free and reading your account needs
+no static IP (that's only for placing orders - swingdash never does).
+1. On web.dhan.co: My Profile > Access DhanHQ APIs > generate an **Access
+   Token** (valid 24 hours).
+2. In the Risk tab press `B`, enter your client ID and paste the token. It's
+   stored in your user folder like the Upstox token, never shown again, and
+   swingdash **renews it** while you keep using the app - open it at least
+   once a day and you won't need to paste a new one.
+3. The sync reads your trade history (the first time, `Broker history
+   (days)` back - 365 by default), today's trades and your holdings, then
+   builds positions: open ones from the shares you still hold, and a closed
+   one for each day you sold, matching buys and sells first-in-first-out.
+   Your stops and notes on imported rows are kept across syncs; quantity,
+   prices and dates come from Dhan. Size a trade here first and the Dhan buy
+   (within 5 days) takes over that row - keeping the plan, so a bigger
+   quantity shows as oversized.
+
+The first look at the tab each day syncs by itself; `B` syncs any time.
+Deleting an imported row hides it for good. If something can't be matched
+(a stock that isn't in the NSE list, or quantities the history can't explain),
+the status line says so rather than guessing.
 
 ## Other commands
 
