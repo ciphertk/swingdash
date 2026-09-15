@@ -9,10 +9,11 @@ is no web frontend and no HTTP API; don't reintroduce one unless asked.
 Tabs today: **Live RVOL** (1, watchlist), **Securities** (2, market-wide:
 every NSE EQ stock/index/ETF with price band, surveillance and sector),
 **Scanner** (3, watchlist: Burst Power and Mswing - the home for further
-per-symbol metrics) and **Chartink** (4, saved Chartink screeners and
-dashboard widgets, with band and Burst Power added to stock lists).
-Planned: FII/DII flows and market breadth/MBI (market-wide, likely
-NSE-sourced like Securities).
+per-symbol metrics), **Chartink** (4, saved Chartink screeners and
+dashboard widgets, with band and Burst Power added to stock lists) and
+**Risk** (5, position sizing and open-risk tracking for normal delivery
+trades; MTF sizing planned as a second view). Planned: FII/DII flows and
+market breadth/MBI (market-wide, likely NSE-sourced like Securities).
 
 ## Commands
 
@@ -39,6 +40,7 @@ src/swingdash/
   logging_setup.py          rotating file log, token redaction, no stdout
   domain/                   PURE stdlib: bars, calendar, watchlist, securities, rvol/*, metrics/*
     scanner.py              per-symbol prepare (history) / live (price) split + the "today" rule
+    risk/                   stops, charges, funding, sizing, checks, portfolio heat (Risk tab)
   adapters/storage/         Database (per-thread conns), migrations, repos/*
   adapters/upstox/          the only home of upstox_client: client, feed, history, quotes, calendar, ...
   adapters/nse/             public NSE archive files + report endpoints (no login, no upstox_client)
@@ -52,6 +54,7 @@ src/swingdash/
     candles.py              daily candle cache; calendar-aware (no call once it has the last session)
     daily_contexts.py       DailyContextLoader: cache-first prepare + paced delta fetches (Scanner, Chartink)
     chartink.py             saved items, sequential run queue, band/Burst enrichment
+    risk.py, risk_settings.py  Risk tab: sizing context, positions, live prices; settings
     preferences.py          remembered choices (Scanner benchmark index)
   ui/                       the only place textual is imported
     app.py                  shell: header, tab strip, global watchlist, CRUD actions
@@ -63,6 +66,7 @@ src/swingdash/
     tabs/securities/        SecuritiesTab + views.py (columns/sort/filter per view) + tcss (market-wide)
     tabs/scanner/           ScannerTab + columns.py + detail.py (panel) + index_picker.py (watchlist)
     tabs/chartink/          ChartinkTab (tree + results) + cells.py + add_modal + dashboard_picker
+    tabs/risk/              RiskTab (form + result + positions) + positions.py + modals + format
     watchlist/, widgets/    header picker/modals, market badge, error panel, NavTable, LiveTable
 tests/  fakes/ fixtures/{nse,chartink}/ unit/ integration/ ui/ network/
 docs/pine/                  original TradingView sources the metrics were ported from
@@ -280,6 +284,33 @@ over the last 20 sessions, built from 1-minute candles.
   **opened** - never "today": weekends, holidays and pre-open show the
   previous close. The engine rolls over at the next open.
 - Do not filter high-volume days out of the baseline (it biased RVOL ~12%).
+
+## Risk tab - position sizing and heat
+
+- **Sizing** (`domain/risk/sizing.py`): quantity = the most whole lots that
+  keep every limit - per-trade risk (loss at the stop **plus round-trip
+  charges**, bisected since brokerage is flat), heat left, max allocation,
+  free capital. `limited_by` names the binding one; `allowed` holds each
+  limit's own quantity. Long-only: the stop must be below entry.
+- **Charges** (`domain/risk/charges.py`): Upstox NSE delivery, verified
+  15 Sep 2026 at https://upstox.com/brokerage-charges/ - ₹20/order, STT 0.1%
+  both sides, NSE txn 0.00307% (IPFT included, from 1 Mar 2026), SEBI
+  ₹10/crore, stamp 0.015% buy, GST 18% on brokerage + txn + DP, DP ₹20 per
+  scrip per sell. Re-verify before changing.
+- **Heat** = Σ max(0, entry − stop) × qty over open positions; a trailed stop
+  at/above entry contributes 0. `initial_stop` is kept for R multiples.
+- **Positions and capital are user-entered** (the Analytics Token can't read
+  holdings/funds). Capital isn't changed by closed trades.
+- **Stops by ATR / recent low and liquidity** use cached daily candles;
+  `RiskService` tops a symbol up once per session on a background thread.
+  Band and surveillance come from `SecuritiesService.snapshot()`; series and
+  lot size from the instrument cache (`find_series`, `lot_size`).
+- **MTF later**: add a `Funding` (own_share < 1, plus interest in the risk)
+  and a second view in the tab's `ContentSwitcher`; positions already store
+  `funding`.
+- The form's entry follows the price only while it still equals the value
+  the tab filled in - compared by value, because the refresh timer can run
+  between a keystroke and its `Input.Changed`.
 
 ## Burst Power and Mswing (the Scanner)
 

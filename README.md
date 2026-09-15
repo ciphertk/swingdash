@@ -12,6 +12,8 @@ feed.
   ports of the TradingView indicators, with Mswing moving live.
 - **Chartink** - your Chartink screeners and dashboard widgets, saved and
   run with one key, with price band and Burst Power added to stock lists.
+- **Risk** - how many shares to buy for a given stop and risk, charges
+  included, and the open risk (portfolio heat) of the positions you hold.
 
 ## Install
 
@@ -175,6 +177,42 @@ Things to know:
   **BURST** uses the same 3-year daily history as the Scanner, with
   Chartink's `close` as today's price - symbols not cached yet fetch it once.
   Rows grouped by sector/industry, and BSE-only rows, have neither.
+
+**Risk tab**
+
+| Key | Action |
+|---|---|
+| `S` (or the Settings button) | capital, risk per trade, max position %, max heat %, ATR / recent-low / liquidity settings |
+| `ctrl+t` (or Take trade) | add the sized trade to open positions (adjust the fill first) |
+| `m` | edit the highlighted position - e.g. trail its stop |
+| `C` | close it at an exit price (it moves to closed positions) |
+| `D` | delete it (a mistake, not an exit) |
+| `h` | switch the table between open and closed positions |
+| `Tab` | move between the form, the buttons and the table |
+
+Type a symbol and the form sizes the trade as you go. The entry fills in
+with the live price (or the last close outside market hours) until you type
+your own. Pick the stop as a price, a % below entry, an ATR multiple or the
+lowest low of the last N days, and the risk as a % of capital or a fixed ₹
+amount. The quantity is the most shares that keeps every limit:
+
+- **risk** - the loss if the stop is hit, *including* round-trip charges
+  (Upstox delivery rates, verified Sep 2026), stays within the risk per trade;
+- **heat** - the total open risk of your positions (Σ (entry − stop) ×
+  quantity, zero once a stop is at or above entry) stays within the heat limit;
+- **allocation** - one position uses at most the max position % of capital;
+- **free capital** - it fits in the capital not already in open positions;
+- SME stocks are sized in whole lots.
+
+Warnings flag a stop wider than the stock's price band (a fall to it can
+take several locked sessions), exchange surveillance, trade-for-trade
+series, and a quantity that's a large share of the average daily volume.
+Band and surveillance come from the Securities tab's data - fetch it once.
+
+Upstox's Analytics Token can't read your holdings, so positions are the ones
+you add here, and capital is what you set (closing trades doesn't change it).
+The table shows live P&L, R multiple, open risk and **to stop** - what a fall
+from the current price to the stop would give back.
 
 ## Other commands
 
