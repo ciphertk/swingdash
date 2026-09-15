@@ -297,9 +297,15 @@ live account** - check shapes on the first real sync and update this.
   trade book and history, and partial fills of one order stay apart.
   Times are IST without an offset; "NA" means none; charges are itemised on
   history rows (brokerage, stt, stamp, exchange, sebi, service tax).
+  **Verified against the user's FY24-25 Realised P&L report**: gross within
+  ₹0.04, charges within ₹2.34 once intraday fills are included. DP charges
+  are in neither the fills nor that report - `Position.dp_estimate` shows the
+  broker's published DP (with GST) for reference only.
 - Holdings `totalQty` = delivered + T1 (today's fills aren't in it yet);
   `mtf_qty`/`mtf_t1_qty` are MTF. Reconcile is FIFO per (symbol, funding),
-  CNC -> normal, MTF -> mtf, intraday ignored; holdings explain shares older
+  CNC -> normal, MTF -> mtf, INTRADAY and blank product -> intraday (closed
+  rows only, noted; a same-day stop-out of a swing buy is recorded as
+  intraday); holdings explain shares older
   than the history; refs are `SYMBOL:funding:open:<first trade id>` /
   `...:closed:<episode>:<sell day>`. Dhan owns qty/prices/dates/charges; the
   user's stop/plan/note survive (and move to the new row when an open

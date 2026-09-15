@@ -245,6 +245,12 @@ no static IP (that's only for placing orders - swingdash never does).
    reads that trade history, today's trades and your holdings, then
    builds positions: open ones from the shares you still hold, and a closed
    one for each day you sold, matching buys and sells first-in-first-out.
+   A trade Dhan records as intraday (e.g. a swing buy whose stop hit the
+   same day) is a closed row noted "intraday - exited the same day", matched
+   on its own so it never eats into shares you hold. Closed rows show Dhan's
+   actual charges and net P&L, which reconcile with Dhan's Realised P&L
+   report, plus **DP EST** - the DP charge (₹12.50 + GST at Dhan) that Dhan
+   debits separately and doesn't include in either, for reference.
    Your stops and notes on imported rows are kept across syncs; quantity,
    prices and dates come from Dhan. Size a trade here first and the Dhan buy
    (within 5 days) takes over that row - keeping the plan, so a bigger

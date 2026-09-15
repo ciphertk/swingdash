@@ -65,6 +65,13 @@ NO_CHARGES = ChargeSchedule(
 )
 
 
+def dp_charge(schedule: ChargeSchedule) -> float:
+    """The DP charge for selling one stock on one day, GST included."""
+    if schedule.dp_includes_gst:
+        return schedule.dp_per_sell
+    return schedule.dp_per_sell * (1 + schedule.gst_rate)
+
+
 @dataclass(frozen=True)
 class Charges:
     buy: float

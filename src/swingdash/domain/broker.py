@@ -8,8 +8,11 @@ them, so this matches them first-in-first-out per stock:
 - a **closed position** is what was sold on one day: the quantity, the FIFO
   cost of those shares, the average sell price and the dates.
 
-Only delivery trades count (CNC, and MTF kept apart as its own funding);
-intraday round trips aren't swing positions. Holdings are the authority for
+Delivery trades (CNC) and MTF are matched as their own books. Intraday
+fills are matched in a third book: a swing trade whose stop hit the same day
+shows up at the broker as intraday, and it's still a (closed) trade - kept
+apart so a same-day exit never consumes shares held from earlier. A blank
+product counts as intraday too. Holdings are the authority for
 what's held: shares bought before the fetched trade history become a lot at
 the holding's average cost, dated at the start of the history and noted as
 such. Anything the trades can't explain is reported, never guessed.
@@ -25,7 +28,9 @@ from enum import StrEnum
 
 NORMAL = "normal"
 MTF = "mtf"
-_FUNDING_BY_PRODUCT = {"CNC": NORMAL, "MTF": MTF}
+INTRADAY = "intraday"  # exited the same day: closed rows only
+_FUNDING_BY_PRODUCT = {"CNC": NORMAL, "MTF": MTF, "INTRADAY": INTRADAY, "": INTRADAY}
+INTRADAY_NOTE = "intraday - exited the same day"
 
 
 class Side(StrEnum):
@@ -220,6 +225,16 @@ def reconcile(
                         f"{history_from:%d %b %Y} and holdings explain."
                     )
 
+        if funding == INTRADAY:
+            positions.extend(_closed_rows(symbol, funding, isins.get(symbol), book))
+            left = sum(lot.quantity for lot in book.lots)
+            if left:
+                mismatches.append(
+                    f"{symbol}: an intraday buy of {left} wasn't sold the same day "
+                    "(converted to delivery?) - not shown as a position."
+                )
+            continue
+
         open_quantity = sum(lot.quantity for lot in book.lots)
         expected = held_quantity + sum(
             (t.quantity if t.side is Side.BUY else -t.quantity) for t in fills if day_of(t) >= today
@@ -280,6 +295,7 @@ def _closed_rows(
                 closed_on=day,
                 exit_price=exit_.proceeds / exit_.quantity,
                 charges=exit_.charges,
+                note=INTRADAY_NOTE if funding == INTRADAY else "",
             )
         )
     return rows

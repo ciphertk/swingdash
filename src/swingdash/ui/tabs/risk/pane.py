@@ -636,6 +636,10 @@ class RiskTab(TabBase):
                     f"  realised {signed_inr(realised)} before charges",
                     style="green" if realised >= 0 else "red",
                 )
+                if view.summary.charges:
+                    net = realised - view.summary.charges
+                    text.append(f", {signed_inr(net)} after", style="green" if net >= 0 else "red")
+                text.append("   DP EST: not in the broker's charges or net P&L", style="grey50")
             text.append("   h: open positions", style="grey50")
         else:
             text.append(f"Open positions ({len(view.open)})", style="bold")

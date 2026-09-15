@@ -6,6 +6,7 @@ import datetime as dt
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from swingdash.domain.risk.charges import SCHEDULES, Broker, dp_charge
 from swingdash.domain.risk.discipline import AssumedStop, Breach, PositionRisk, position_risk
 
 MANUAL = "manual"
@@ -72,6 +73,21 @@ class Position:
     def net_realised_pnl(self) -> float | None:
         gross = self.realised_pnl
         return None if gross is None else gross - self.charges
+
+    @property
+    def dp_estimate(self) -> float | None:
+        """
+        The broker's DP charge for this exit, estimated from its published
+        rate - brokers don't itemise it on fills (it's debited separately), so
+        it isn't in `charges`. None for open, manual and same-day (intraday) rows.
+        """
+        if self.is_open or self.funding == "intraday":
+            return None
+        try:
+            broker = Broker(self.source)
+        except ValueError:
+            return None
+        return dp_charge(SCHEDULES[broker])
 
 
 @dataclass(frozen=True)

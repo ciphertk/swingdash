@@ -8,6 +8,7 @@ import itertools
 import pytest
 
 from swingdash.domain.broker import (
+    INTRADAY,
     MTF,
     NORMAL,
     BrokerHolding,
@@ -232,14 +233,45 @@ def test_unexplained_quantities_are_reported():
     assert any("sold 5 more" in m for m in oversold.mismatches)
 
 
-def test_intraday_is_ignored_and_mtf_is_its_own_funding():
+def test_same_day_exits_are_closed_trades_kept_apart_from_holdings():
+    # A swing buy whose stop hit the same day shows up at the broker as intraday.
     trades = [
-        _fill(Side.BUY, 10, 100, dt.date(2026, 9, 1), product="INTRADAY"),
-        _fill(Side.SELL, 10, 101, dt.date(2026, 9, 1), product="INTRADAY"),
+        _fill(Side.BUY, 100, 200, dt.date(2026, 9, 1)),  # delivery, still held
+        _fill(Side.BUY, 10, 100, dt.date(2026, 9, 3), product="INTRADAY", charges=4),
+        _fill(Side.SELL, 10, 95, dt.date(2026, 9, 3), product="INTRADAY", charges=4),
+        _fill(Side.BUY, 2, 50, dt.date(2026, 9, 4), product=""),  # blank product: same
+        _fill(Side.SELL, 2, 52, dt.date(2026, 9, 4), product=""),
         _fill(Side.BUY, 50, 100, dt.date(2026, 9, 2), product="MTF"),
     ]
-    result = _reconcile(trades, [_held(mtf=50, avg=100)])
+    result = _reconcile(trades, [_held(qty=100, avg=200, mtf=50)])
     assert result.mismatches == ()
-    (position,) = result.positions
-    assert (position.funding, position.quantity) == (MTF, 50)
-    assert NORMAL != MTF
+    by_funding = {}
+    for position in result.positions:
+        by_funding.setdefault(position.funding, []).append(position)
+
+    first, second = sorted(by_funding[INTRADAY], key=lambda p: p.opened_on)
+    assert (first.quantity, first.entry, first.exit_price, first.charges) == (10, 100, 95, 8)
+    assert first.opened_on == first.closed_on == dt.date(2026, 9, 3)
+    assert first.note == "intraday - exited the same day"
+    assert second.exit_price == 52
+    # The delivery shares weren't touched by the same-day exit.
+    (held,) = by_funding[NORMAL]
+    assert (held.quantity, held.entry, held.closed_on) == (100, 200, None)
+    (mtf,) = by_funding[MTF]
+    assert mtf.quantity == 50
+
+
+def test_an_intraday_buy_left_open_is_reported():
+    result = _reconcile([_fill(Side.BUY, 10, 100, dt.date(2026, 9, 3), product="INTRADAY")])
+    assert result.positions == ()
+    assert any("wasn't sold the same day" in m for m in result.mismatches)
+
+
+def test_dp_is_estimated_for_broker_delivery_exits_only():
+    closed = {"closed_on": dt.date(2026, 9, 10), "exit_price": 520}
+    dhan = _position(source="dhan", **closed)
+    assert dhan.dp_estimate == pytest.approx(12.5 * 1.18)
+    assert _position(source="zerodha", **closed).dp_estimate == pytest.approx(15.34)
+    assert _position(source="dhan", funding="intraday", **closed).dp_estimate is None
+    assert _position(**closed).dp_estimate is None  # manual: no broker to go by
+    assert _position(source="dhan").dp_estimate is None  # still open

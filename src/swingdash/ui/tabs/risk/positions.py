@@ -197,6 +197,12 @@ CLOSED_COLUMNS: tuple[Column[Position], ...] = (
         lambda p, _: p.net_realised_pnl,
         lambda p, _: _signed(p.net_realised_pnl, signed_inr),
     ),
+    Column(
+        "dp",
+        "DP EST",
+        lambda p, _: p.dp_estimate,
+        lambda p, _: _number(p.dp_estimate, style="grey62"),
+    ),
     Column("pnl_pct", "P&L %", _realised_pct, lambda p, c: _signed(_realised_pct(p, c))),
     Column("r", "R", _closed_r, lambda p, c: _signed(_closed_r(p, c), _r_text)),
     Column(
