@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from swingdash.adapters.storage.repos.app_state import AppStateRepository
 from swingdash.domain.risk.charges import SCHEDULES, Broker, ChargeSchedule
+from swingdash.domain.risk.discipline import AssumedStop
 from swingdash.domain.risk.sizing import RiskMode, RiskSpec
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,10 @@ class RiskSettings:
     low_sessions: int = 10
     liquidity_warn_pct: float = 1.0
     broker: Broker = Broker.UPSTOX  # whose delivery charges go into the risk
+    # For positions without a usable stop: assume one this far below the price.
+    assumed_stop_use_atr: bool = True  # atr_multiple x ATR; else the percentage
+    assumed_stop_pct: float = 8.0  # also the fallback without ATR history
+    broker_history_days: int = 365  # how far back a first broker sync reads trades
 
     @property
     def risk(self) -> RiskSpec:
@@ -38,6 +43,13 @@ class RiskSettings:
     @property
     def charges(self) -> ChargeSchedule:
         return SCHEDULES[self.broker]
+
+    @property
+    def assumed_stop(self) -> AssumedStop:
+        return AssumedStop(
+            percent=self.assumed_stop_pct,
+            atr_multiple=self.atr_multiple if self.assumed_stop_use_atr else None,
+        )
 
 
 class RiskSettingsService:

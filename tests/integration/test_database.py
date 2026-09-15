@@ -132,3 +132,31 @@ def test_v4_database_keeps_its_chartink_items(tmp_path: Path):
         assert (row[0], row[1]) == ("Mine", None)
     finally:
         db.close()
+
+
+def test_v6_positions_survive_v7_with_their_plan(tmp_path: Path):
+    path = tmp_path / "v6.db"
+    db = Database(path)
+    try:
+        conn = db.connection()
+        for number, sql in MIGRATIONS:
+            if number <= 6:
+                conn.executescript(sql)
+        conn.execute(
+            "INSERT INTO positions (symbol, quantity, entry, stop, initial_stop, opened_on)"
+            " VALUES ('SBIN', 10, 800, 760, 750, '2026-09-01')"
+        )
+        conn.execute("PRAGMA user_version = 6")
+        conn.commit()
+
+        assert migrate(db) == LATEST_VERSION
+        row = conn.execute("SELECT * FROM positions").fetchone()
+        assert (row["symbol"], row["stop"], row["source"]) == ("SBIN", 760, "manual")
+        assert (row["planned_quantity"], row["planned_stop"]) == (10, 750)
+        conn.execute(
+            "INSERT INTO positions (symbol, quantity, entry, opened_on) VALUES ('TCS', 1, 1, '2026-09-02')"
+        )  # stops are optional now
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert {"broker_trades", "broker_ignored"} <= tables
+    finally:
+        db.close()

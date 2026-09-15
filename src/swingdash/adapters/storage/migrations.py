@@ -165,6 +165,61 @@ CREATE TABLE IF NOT EXISTS positions (
 );
 """
 
+# Imported (broker) positions and "not followed" tracking: stops become
+# optional (SQLite can't drop NOT NULL, so the table is rebuilt), each row
+# keeps its plan and source, and broker fills are stored so positions can be
+# rebuilt offline. Existing rows are manual; their plan is what was entered.
+_V7_BROKER_POSITIONS = """
+CREATE TABLE positions_v7 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    instrument_key TEXT,
+    quantity INTEGER NOT NULL,
+    entry REAL NOT NULL,
+    stop REAL,
+    initial_stop REAL,
+    opened_on TEXT NOT NULL,
+    funding TEXT NOT NULL DEFAULT 'normal',
+    note TEXT NOT NULL DEFAULT '',
+    closed_on TEXT,
+    exit_price REAL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    broker_ref TEXT UNIQUE,
+    planned_quantity INTEGER,
+    planned_stop REAL,
+    charges REAL NOT NULL DEFAULT 0
+);
+INSERT INTO positions_v7
+    (id, symbol, instrument_key, quantity, entry, stop, initial_stop, opened_on,
+     funding, note, closed_on, exit_price, planned_quantity, planned_stop)
+SELECT id, symbol, instrument_key, quantity, entry, stop, initial_stop, opened_on,
+       funding, note, closed_on, exit_price, quantity, initial_stop
+FROM positions;
+DROP TABLE positions;
+ALTER TABLE positions_v7 RENAME TO positions;
+
+CREATE TABLE IF NOT EXISTS broker_trades (
+    broker TEXT NOT NULL,
+    trade_id TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    isin TEXT,
+    side TEXT NOT NULL,
+    product TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    price REAL NOT NULL,
+    traded_at TEXT NOT NULL,
+    charges REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (broker, trade_id)
+);
+
+-- Imported rows the user deleted: never re-imported.
+CREATE TABLE IF NOT EXISTS broker_ignored (
+    broker TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    PRIMARY KEY (broker, ref)
+);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, _V1_BASELINE_SCHEMA),
     (2, _V2_APP_STATE),
@@ -172,6 +227,7 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (4, _V4_CHARTINK),
     (5, _V5_CHARTINK_COLUMNS),
     (6, _V6_POSITIONS),
+    (7, _V7_BROKER_POSITIONS),
 )
 LATEST_VERSION = MIGRATIONS[-1][0]
 

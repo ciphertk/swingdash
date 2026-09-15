@@ -156,20 +156,20 @@ async def test_take_edit_close_and_delete_positions(services: Services):
         app.screen.query_one("#taken-on", Input).value = "10-09-2026"
         await pilot.click("#confirm")
         await until(pilot, lambda: _table(app).row_count == 1)
-        assert _rows(app)[0][0] == "RAYMOND"
+        assert _rows(app)[0][:2] == ["M", "RAYMOND"]  # manual
         assert _rows(app)[0][-2:] == ["10 Sep 26", "3"]  # taken, days held
         assert "1 open" in _text(app, "risk-summary")
         assert services.risk.portfolio().summary.heat > 0
 
-        # Trail the stop above entry: no open risk left.
+        # Trail the stop up to entry: no open risk left.
         _table(app).focus()
         await pilot.press("m")
         await until(pilot, lambda: isinstance(app.screen, PositionModal))
         entry = float(app.screen.query_one("#entry", Input).value)
-        app.screen.query_one("#stop", Input).value = f"{entry + 1:.2f}"
+        app.screen.query_one("#stop", Input).value = f"{entry:.2f}"  # at the price
         await pilot.click("#confirm")
         await until(pilot, lambda: services.risk.portfolio().summary.heat == 0)
-        await until(pilot, lambda: _rows(app)[0][8] == "₹0")
+        await until(pilot, lambda: _rows(app)[0][9] == "₹0")
 
         # Close at a price: it moves to the closed list with its P&L.
         await pilot.press("C")
@@ -221,8 +221,8 @@ async def test_export_and_chart(services: Services, opened_urls):
         assert len(exports) == 1
         with exports[0].open(encoding="utf-8-sig", newline="") as handle:
             rows = list(csv.reader(handle))
-        assert rows[0][:5] == ["SYMBOL", "QTY", "ENTRY", "STOP", "LTP"]
-        assert rows[1][:4] == ["SBIN", "100", "60.0", "55.0"]
+        assert rows[0][:6] == ["", "SYMBOL", "QTY", "ENTRY", "STOP", "LTP"]
+        assert rows[1][:5] == ["manual", "SBIN", "100", "60.0", "55.0"]
 
 
 async def test_a_bad_date_is_explained_in_the_dialog(services: Services):

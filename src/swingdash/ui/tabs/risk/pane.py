@@ -330,9 +330,8 @@ class RiskTab(TabBase):
             self.app.notify(str(exc), severity="error")
             return
         self._showing_closed = False
-        self.app.notify(
-            f"Added {symbol}: {grouped(form.quantity)} @ {form.entry:,.2f}, stop {form.stop:,.2f}"
-        )
+        stop = "no stop-loss" if form.stop is None else f"stop {form.stop:,.2f}"
+        self.app.notify(f"Added {symbol}: {grouped(form.quantity)} @ {form.entry:,.2f}, {stop}")
         self._safe_refresh()
 
     def action_settings(self) -> None:
@@ -351,14 +350,20 @@ class RiskTab(TabBase):
         if row is None:
             return
         position = row.position
+        title = (
+            f"{position.symbol} from {position.source.title()} - set or trail the stop"
+            if position.is_imported
+            else f"Edit {position.symbol} - trail the stop, or fix the fill"
+        )
         self.app.push_screen(
             PositionModal(
-                f"Edit {position.symbol} - trail the stop, or fix the fill",
+                title,
                 position.quantity,
                 position.entry,
                 position.stop,
                 position.opened_on,
                 position.note,
+                locked=position.is_imported,
             ),
             partial(self._position_edited, position.id),
         )
@@ -385,6 +390,12 @@ class RiskTab(TabBase):
         if row is None:
             return
         position = row.position
+        if position.is_imported:
+            self.app.notify(
+                f"Exits come from {position.source.title()} - sell there, then sync (B).",
+                severity="warning",
+            )
+            return
         self.app.push_screen(
             ClosePositionModal(
                 f"Close {position.symbol} ({grouped(position.quantity)} @ {position.entry:,.2f})",
@@ -413,11 +424,15 @@ class RiskTab(TabBase):
         if position is None:
             self.app.notify("Select a position first.", severity="warning")
             return
+        message = (
+            f"Hide {position.symbol} from swingdash?\n"
+            f"It stays in {position.source.title()}; syncs won't bring it back."
+            if position.is_imported
+            else f"Delete {position.symbol}?\n"
+            "This removes it entirely - to record an exit, close it (C)."
+        )
         self.app.push_screen(
-            ConfirmModal(
-                f"Delete {position.symbol}?\n"
-                "This removes it entirely - to record an exit, close it (C)."
-            ),
+            ConfirmModal(message),
             partial(self._position_deleted, position.id),
         )
 

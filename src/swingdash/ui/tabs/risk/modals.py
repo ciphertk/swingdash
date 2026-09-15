@@ -69,6 +69,11 @@ class _FormModal[T](ModalScreen[T | None]):
             raise ValueError(f"{label} must be above zero.")
         return value
 
+    def _optional_number(self, input_id: str, label: str) -> float | None:
+        if not self.query_one(f"#{input_id}", Input).value.strip():
+            return None
+        return self._number(input_id, label)
+
     def _date(self, input_id: str) -> dt.date:
         return parse_date(self.query_one(f"#{input_id}", Input).value)
 
@@ -83,7 +88,7 @@ class _FormModal[T](ModalScreen[T | None]):
 class PositionForm:
     quantity: int
     entry: float
-    stop: float
+    stop: float | None  # None: no stop-loss
     note: str
     taken_on: dt.date
 
@@ -95,7 +100,11 @@ class CloseForm:
 
 
 class PositionModal(_FormModal[PositionForm]):
-    """Take a sized trade, or edit an open position (e.g. trail its stop)."""
+    """
+    Take a sized trade, or edit an open position (e.g. trail its stop). A
+    blank stop means no stop-loss. `locked`: an imported position, whose
+    date, quantity and entry come from the broker - only stop and note edit.
+    """
 
     CSS = _DIALOG_CSS.format(name="PositionModal")
 
@@ -104,15 +113,18 @@ class PositionModal(_FormModal[PositionForm]):
         title: str,
         quantity: int,
         entry: float,
-        stop: float,
+        stop: float | None,
         taken_on: dt.date,
         note: str = "",
         confirm_label: str = "Save",
+        *,
+        locked: bool = False,
     ) -> None:
         super().__init__()
         self._title = title
         self._values = (quantity, entry, stop, taken_on, note)
         self._confirm_label = confirm_label
+        self._locked = locked
 
     def compose(self) -> ComposeResult:
         quantity, entry, stop, taken_on, note = self._values
@@ -120,13 +132,23 @@ class PositionModal(_FormModal[PositionForm]):
             yield Label(self._title)
             with Grid():
                 yield Label("Date taken")
-                yield Input(date_input(taken_on), placeholder="DD-MM-YYYY", id="taken-on")
+                yield Input(
+                    date_input(taken_on),
+                    placeholder="DD-MM-YYYY",
+                    id="taken-on",
+                    disabled=self._locked,
+                )
                 yield Label("Quantity")
-                yield Input(str(quantity), type="integer", id="quantity")
+                yield Input(str(quantity), type="integer", id="quantity", disabled=self._locked)
                 yield Label("Entry")
-                yield Input(f"{entry:.2f}", type="number", id="entry")
-                yield Label("Stop")
-                yield Input(f"{stop:.2f}", type="number", id="stop")
+                yield Input(f"{entry:.2f}", type="number", id="entry", disabled=self._locked)
+                yield Label("Stop (blank = none)")
+                yield Input(
+                    "" if stop is None else f"{stop:.2f}",
+                    type="number",
+                    placeholder="no stop-loss",
+                    id="stop",
+                )
                 yield Label("Note")
                 yield Input(note, id="note")
             yield Label("", id="form-error")
@@ -135,13 +157,13 @@ class PositionModal(_FormModal[PositionForm]):
                 yield Button(self._confirm_label, variant="primary", id="confirm")
 
     def on_mount(self) -> None:
-        self.query_one("#quantity", Input).focus()
+        self.query_one("#stop" if self._locked else "#quantity", Input).focus()
 
     def collect(self) -> PositionForm:
         return PositionForm(
             quantity=self._integer("quantity", "Quantity"),
             entry=self._number("entry", "Entry"),
-            stop=self._number("stop", "Stop"),
+            stop=self._optional_number("stop", "Stop"),
             note=self.query_one("#note", Input).value.strip(),
             taken_on=self._date("taken-on"),
         )

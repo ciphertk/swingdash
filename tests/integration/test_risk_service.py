@@ -18,6 +18,7 @@ from swingdash.adapters.storage.repos.fundamentals import FundamentalsRepository
 from swingdash.adapters.storage.repos.positions import PositionRepository
 from swingdash.adapters.storage.repos.securities import SecuritiesRepository
 from swingdash.domain.bars import DailyBar
+from swingdash.domain.broker import ImportedPosition
 from swingdash.domain.calendar import IST
 from swingdash.domain.risk.charges import Broker
 from swingdash.domain.risk.sizing import Limit, RiskMode, RiskSpec
@@ -185,8 +186,9 @@ def test_open_positions_count_against_heat_and_free_capital(harness: Harness):
     trade = service.size("SMEONE", 50, StopMethod.PERCENT, 2)
     assert trade.result.limited_by in (Limit.ALLOCATION, Limit.FREE_CAPITAL)
 
-    # Trailing the stop to break-even takes RAYMOND out of the heat.
-    service.update_position(first.id, quantity=1_000, entry=500, stop=505)
+    # Trailing the stop to break-even takes RAYMOND out of the heat. (Above the
+    # price, 500, it would count as breached and be measured to an assumed stop.)
+    service.update_position(first.id, quantity=1_000, entry=500, stop=500)
     assert service.portfolio().summary.heat == 15_000
     assert service.positions()[0].initial_stop == 480
 
@@ -316,3 +318,51 @@ def test_the_chosen_brokers_charges_go_into_the_risk(harness: Harness):
     dhan = service.size("RAYMOND", 500, StopMethod.PERCENT, 10)
     assert dhan.result.charges.total < upstox.result.charges.total  # no ₹20 per order
     assert RiskSettingsService(AppStateRepository(harness.db)).get().broker is Broker.DHAN
+
+
+def test_a_position_without_a_stop_counts_an_assumed_risk(harness: Harness):
+    service = harness.service
+    # ATR(14) of the flat 10-point range is 10; 1.5 ATR below the 500 close.
+    service.open_position("RAYMOND", 100, 500, None, planned=False)
+    (row,) = service.portfolio().open
+    assert row.risk.assumed and row.risk.stop == pytest.approx(485)
+    assert row.risk.amount == pytest.approx(1_500)
+    assert [b.value for b in row.risk.breaches] == ["no SL"]
+    summary = service.portfolio().summary
+    assert summary.assumed_heat == pytest.approx(1_500) and summary.not_followed == 1
+
+    service.save_settings(replace(SETTINGS, assumed_stop_use_atr=False, assumed_stop_pct=10))
+    assert service.portfolio().open[0].risk.amount == pytest.approx(5_000)
+
+
+def test_imported_positions_edit_only_their_stop_and_hide_on_delete(harness: Harness):
+    repo = PositionRepository(harness.db)
+    imported = ImportedPosition(
+        ref="RAYMOND:normal:open:T1",
+        symbol="RAYMOND",
+        isin=None,
+        funding="normal",
+        quantity=100,
+        entry=480,
+        opened_on=dt.date(2026, 9, 1),
+    )
+    position_id = repo.save_imported("dhan", imported, _key("RAYMOND"))
+    service = harness.service
+    service.reload()
+
+    service.update_position(position_id, quantity=100, entry=480, stop=470, note="gap fill")
+    assert service.positions()[0].stop == 470
+    with pytest.raises(RiskInputError, match="come from Dhan"):
+        service.update_position(position_id, quantity=150, entry=480, stop=470)
+    with pytest.raises(RiskInputError, match="sell there"):
+        service.close_position(position_id, 520)
+
+    # A re-import refreshes Dhan's numbers but keeps the user's stop and note.
+    repo.save_imported("dhan", replace(imported, quantity=120, entry=485), _key("RAYMOND"))
+    service.reload()
+    refreshed = service.positions()[0]
+    assert (refreshed.quantity, refreshed.stop, refreshed.note) == (120, 470, "gap fill")
+
+    service.delete_position(position_id)
+    assert service.positions() == []
+    assert repo.ignored("dhan") == {"RAYMOND:normal:open:T1"}

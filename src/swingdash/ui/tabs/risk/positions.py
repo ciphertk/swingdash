@@ -43,6 +43,11 @@ def _r_text(value: float) -> str:
     return f"{value:+.1f}R"
 
 
+def _source_cell(position: Position) -> Text:
+    """One letter: D for a Dhan import, M for a manual entry."""
+    return Text(position.source[:1].upper(), style="cyan" if position.is_imported else "grey50")
+
+
 def _price(row: PositionRow) -> float | None:
     return row.quote.price if row.quote else None
 
@@ -69,12 +74,16 @@ def _open_r(row: PositionRow, _: float) -> float | None:
 
 
 def _risk_pct(row: PositionRow, capital: float) -> float | None:
-    return row.position.open_risk / capital * 100 if capital > 0 else None
+    return row.risk.amount / capital * 100 if capital > 0 else None
 
 
 def _to_stop(row: PositionRow, _: float) -> float | None:
     price = _price(row)
     return None if price is None else row.position.giveback(price)
+
+
+def _flags(row: PositionRow, _: float) -> str:
+    return ", ".join(breach.value for breach in row.risk.breaches)
 
 
 def _ltp_cell(row: PositionRow, _: float) -> Text:
@@ -85,15 +94,26 @@ def _ltp_cell(row: PositionRow, _: float) -> Text:
 
 def _stop_cell(row: PositionRow, _: float) -> Text:
     position = row.position
+    if position.stop is None:
+        return Text("none", style="bold red", justify="right")
     return _number(position.stop, style="green" if position.stop >= position.entry else "")
 
 
 def _risk_cell(row: PositionRow, _: float) -> Text:
-    risk = row.position.open_risk
-    return Text(inr(risk), style="" if risk else "grey50", justify="right")
+    risk = row.risk
+    if risk.assumed:
+        # Measured to an assumed stop: "~" and yellow, so it doesn't read as planned.
+        return Text(f"~{inr(risk.amount)}", style="yellow", justify="right")
+    return Text(inr(risk.amount), style="" if risk.amount else "grey50", justify="right")
+
+
+def _flags_cell(row: PositionRow, capital: float) -> Text:
+    flags = _flags(row, capital)
+    return Text(flags, style="bold red") if flags else Text("ok", style="green")
 
 
 OPEN_COLUMNS: tuple[Column[PositionRow], ...] = (
+    Column("source", "", lambda r, _: r.position.source, lambda r, _: _source_cell(r.position)),
     Column(
         "symbol",
         "SYMBOL",
@@ -112,9 +132,10 @@ OPEN_COLUMNS: tuple[Column[PositionRow], ...] = (
     Column("pnl", "P&L", _pnl, lambda r, c: _signed(_pnl(r, c), signed_inr)),
     Column("pnl_pct", "P&L %", _open_pnl_pct, lambda r, c: _signed(_open_pnl_pct(r, c))),
     Column("r", "R", _open_r, lambda r, c: _signed(_open_r(r, c), _r_text)),
-    Column("risk", "RISK", lambda r, _: r.position.open_risk, _risk_cell),
+    Column("risk", "RISK", lambda r, _: r.risk.amount, _risk_cell),
     Column("risk_pct", "RISK %", _risk_pct, lambda r, c: _number(_risk_pct(r, c))),
     Column("to_stop", "TO STOP", _to_stop, lambda r, c: _signed(_to_stop(r, c), signed_inr)),
+    Column("plan", "PLAN", _flags, _flags_cell),
     Column(
         "taken",
         "TAKEN",
@@ -146,6 +167,7 @@ def _days_held(position: Position, _: float) -> int | None:
 
 
 CLOSED_COLUMNS: tuple[Column[Position], ...] = (
+    Column("source", "", lambda p, _: p.source, lambda p, _: _source_cell(p)),
     Column(
         "symbol",
         "SYMBOL",
@@ -162,6 +184,18 @@ CLOSED_COLUMNS: tuple[Column[Position], ...] = (
     Column("exit", "EXIT", lambda p, _: p.exit_price, lambda p, _: _number(p.exit_price)),
     Column(
         "pnl", "P&L", lambda p, _: p.realised_pnl, lambda p, _: _signed(p.realised_pnl, signed_inr)
+    ),
+    Column(
+        "charges",
+        "CHARGES",
+        lambda p, _: p.charges,
+        lambda p, _: _number(p.charges, style="grey62") if p.charges else _missing(),
+    ),
+    Column(
+        "net",
+        "NET P&L",
+        lambda p, _: p.net_realised_pnl,
+        lambda p, _: _signed(p.net_realised_pnl, signed_inr),
     ),
     Column("pnl_pct", "P&L %", _realised_pct, lambda p, c: _signed(_realised_pct(p, c))),
     Column("r", "R", _closed_r, lambda p, c: _signed(_closed_r(p, c), _r_text)),

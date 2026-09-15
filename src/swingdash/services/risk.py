@@ -1,9 +1,12 @@
 """
 RiskService - position sizing and the open-risk tracker behind the Risk tab.
 
-- Capital, risk per trade and limits come from RiskSettingsService; open
-  positions are entered by the user (the Analytics Token can't read holdings)
-  and live in SQLite.
+- Capital, risk per trade and limits come from RiskSettingsService.
+  Positions are entered by hand (the Upstox Analytics Token can't read
+  holdings) or imported from a broker (DhanSyncService); both live in SQLite.
+- Each open position's risk is measured to its stop - or, with no stop or the
+  price already below it, to an assumed stop below the price - and its breaches
+  of plan are listed (domain/risk/discipline.py).
 - Prices: the live feed (one hub subscription for open positions plus the
   symbol being sized) or, when it has nothing newer, the Market Quote API's
   last traded price (refreshed at most once a minute, off the UI thread -
@@ -30,9 +33,10 @@ from typing import Literal
 from swingdash.adapters.storage.repos.positions import PositionRepository
 from swingdash.domain.bars import DailyBar
 from swingdash.domain.risk.checks import RiskWarning, TradeContext, trade_warnings
+from swingdash.domain.risk.discipline import PositionRisk, position_risk
 from swingdash.domain.risk.portfolio import PortfolioSummary, Position, summarise
 from swingdash.domain.risk.sizing import RiskSpec, SizingInput, SizingResult, size_position
-from swingdash.domain.risk.stops import RiskInputError, StopMethod, resolve_stop
+from swingdash.domain.risk.stops import RiskInputError, StopMethod, atr, resolve_stop
 from swingdash.domain.securities import NOT_UNDER_SURVEILLANCE, PriceBand, Surveillance
 from swingdash.services.candles import CandleService
 from swingdash.services.instruments import InstrumentService, InstrumentsUnavailableError
@@ -92,6 +96,7 @@ class PositionRow:
     position: Position
     quote: Quote | None
     days_held: int
+    risk: PositionRisk
 
 
 @dataclass(frozen=True)
@@ -250,44 +255,67 @@ class RiskService:
         self._refresh_quotes(
             [p.instrument_key for p in positions if p.is_open and p.instrument_key]
         )
-        rows = tuple(
-            PositionRow(
-                position=p,
-                quote=self._quote(p.instrument_key, self._history(p.instrument_key))
-                if p.instrument_key
-                else None,
-                days_held=(today - p.opened_on).days,
-            )
-            for p in positions
-            if p.is_open
-        )
         settings = self.settings
+        assumed = settings.assumed_stop
+        rows: list[PositionRow] = []
+        for p in positions:
+            if not p.is_open:
+                continue
+            bars = self._history(p.instrument_key) if p.instrument_key else ()
+            quote = self._quote(p.instrument_key, bars) if p.instrument_key else None
+            price = quote.price if quote else None
+            risk = position_risk(p, price, atr(bars, settings.atr_period), assumed)
+            rows.append(PositionRow(p, quote, (today - p.opened_on).days, risk))
+        summary = summarise(
+            positions,
+            settings.capital,
+            settings.max_heat_pct,
+            risks={row.position.id: row.risk for row in rows},
+            prices={row.position.id: row.quote.price for row in rows if row.quote},
+        )
         return PortfolioView(
-            summary=summarise(positions, settings.capital, settings.max_heat_pct),
-            open=rows,
+            summary=summary,
+            open=tuple(rows),
             closed=tuple(p for p in positions if not p.is_open),
         )
+
+    def reload(self) -> None:
+        """Positions changed outside this service (a broker sync)."""
+        self._changed()
 
     def open_position(
         self,
         symbol: str,
         quantity: int,
         entry: float,
-        stop: float,
+        stop: float | None,
         note: str = "",
         opened_on: dt.date | None = None,
+        *,
+        planned: bool = True,
     ) -> Position:
-        """`opened_on`: the day the trade was taken (default today)."""
+        """
+        `opened_on`: the day the trade was taken (default today). `stop` None:
+        no stop-loss (flagged). `planned`: it was sized in the tab, so its
+        quantity and stop are the plan later imports are compared with.
+        """
         key = self._key(symbol)
         if key is None:
             raise RiskInputError(f"'{symbol.strip().upper()}' isn't an NSE stock swingdash knows.")
         _check_position(quantity, entry, stop)
-        if stop >= entry:
+        if stop is not None and stop >= entry:
             raise RiskInputError("The stop must be below entry when opening a position.")
         opened_on = opened_on or self._calendar.today()
         self._check_not_future(opened_on, "The date taken")
         position_id = self._repo.add(
-            symbol.strip().upper(), key, quantity, entry, stop, opened_on, note
+            symbol.strip().upper(),
+            key,
+            quantity,
+            entry,
+            stop,
+            opened_on,
+            note,
+            planned=planned and stop is not None,
         )
         self._changed()
         position = self._repo.get(position_id)
@@ -300,15 +328,28 @@ class RiskService:
         *,
         quantity: int,
         entry: float,
-        stop: float,
+        stop: float | None,
         note: str = "",
         opened_on: dt.date | None = None,
     ) -> None:
-        """A stop at or above entry is fine here - that's a trailed stop."""
+        """
+        A stop at or above entry is fine here - that's a trailed stop. On an
+        imported position only the stop and note can change: the broker owns
+        the quantity, price and dates.
+        """
         _check_position(quantity, entry, stop)
         position = self._repo.get(position_id)
         if position is None:
             raise RiskInputError("That position no longer exists.")
+        if position.is_imported and (
+            quantity != position.quantity
+            or abs(entry - position.entry) > 0.005
+            or (opened_on is not None and opened_on != position.opened_on)
+        ):
+            raise RiskInputError(
+                f"Quantity, price and dates come from {position.source.title()} - "
+                "only the stop and note can be edited."
+            )
         opened_on = opened_on or position.opened_on
         self._check_not_future(opened_on, "The date taken")
         if position.closed_on is not None and opened_on > position.closed_on:
@@ -327,6 +368,10 @@ class RiskService:
         position = self._repo.get(position_id)
         if position is None:
             raise RiskInputError("That position no longer exists.")
+        if position.is_imported:
+            raise RiskInputError(
+                f"Exits come from {position.source.title()} - sell there, then sync."
+            )
         closed_on = closed_on or self._calendar.today()
         self._check_not_future(closed_on, "The exit date")
         if closed_on < position.opened_on:
@@ -337,6 +382,10 @@ class RiskService:
         self._changed()
 
     def delete_position(self, position_id: int) -> None:
+        """An imported position is also remembered as ignored, so syncs don't bring it back."""
+        position = self._repo.get(position_id)
+        if position is not None and position.is_imported and position.broker_ref:
+            self._repo.ignore(position.source, position.broker_ref)
         self._repo.delete(position_id)
         self._changed()
 
@@ -503,8 +552,8 @@ class RiskService:
         return self._flags.get(symbol, (None, NOT_UNDER_SURVEILLANCE))
 
 
-def _check_position(quantity: int, entry: float, stop: float) -> None:
+def _check_position(quantity: int, entry: float, stop: float | None) -> None:
     if quantity <= 0:
         raise RiskInputError("Quantity must be at least 1.")
-    if entry <= 0 or stop <= 0:
+    if entry <= 0 or (stop is not None and stop <= 0):
         raise RiskInputError("Entry and stop must be above zero.")
