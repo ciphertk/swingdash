@@ -48,6 +48,12 @@ def _chartink() -> TabBase:
     return ChartinkTab()
 
 
+def _risk() -> TabBase:
+    from swingdash.ui.tabs.risk.pane import RiskTab
+
+    return RiskTab()
+
+
 TABS: tuple[TabSpec, ...] = (
     TabSpec(id="live-rvol", title="Live RVOL", factory=_live_rvol, css_path="tabs/rvol/rvol.tcss"),
     TabSpec(
@@ -60,4 +66,5 @@ TABS: tuple[TabSpec, ...] = (
     TabSpec(
         id="chartink", title="Chartink", factory=_chartink, css_path="tabs/chartink/chartink.tcss"
     ),
+    TabSpec(id="risk", title="Risk", factory=_risk, css_path="tabs/risk/risk.tcss"),
 )

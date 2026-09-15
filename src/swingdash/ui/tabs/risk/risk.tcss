@@ -1,0 +1,99 @@
+RiskTab {
+    height: 1fr;
+}
+
+RiskTab #risk-summary {
+    height: auto;
+    padding: 0 1;
+    background: $panel;
+}
+
+RiskTab #risk-modes,
+RiskTab #risk-normal {
+    height: 1fr;
+}
+
+RiskTab #risk-top {
+    height: auto;
+    border-bottom: solid $panel-lighten-2;
+}
+
+RiskTab #risk-form {
+    width: 72;
+    height: auto;
+    padding: 0 1;
+}
+
+RiskTab .risk-row {
+    height: auto;
+}
+
+RiskTab .risk-label {
+    width: 14;
+    padding: 1 0 0 0;
+    color: $text-muted;
+}
+
+RiskTab #risk-symbol {
+    width: 20;
+}
+
+RiskTab #risk-entry,
+RiskTab #risk-stop-value {
+    width: 16;
+}
+
+RiskTab #risk-value {
+    width: 14;
+}
+
+RiskTab .risk-hint {
+    width: 1fr;
+    padding: 1 0 0 1;
+}
+
+RiskTab RadioSet {
+    layout: horizontal;
+    width: auto;
+    height: auto;
+    border: none;
+    padding: 1 0 0 0;
+    background: transparent;
+}
+
+RiskTab RadioButton {
+    width: auto;
+    margin-right: 1;
+}
+
+RiskTab .risk-buttons {
+    padding: 0 0 1 14;
+}
+
+RiskTab .risk-buttons Button {
+    margin-right: 1;
+}
+
+RiskTab #risk-result {
+    width: 1fr;
+    height: auto;
+    padding: 1 2;
+}
+
+RiskTab #risk-table-title {
+    height: auto;
+    padding: 0 1;
+}
+
+RiskTab #risk-positions {
+    height: 1fr;
+}
+
+RiskTab #risk-positions > .datatable--cursor {
+    background: $accent 40%;
+}
+
+RiskTab #risk-status {
+    height: auto;
+    padding: 0 1;
+}
