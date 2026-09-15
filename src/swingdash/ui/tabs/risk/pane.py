@@ -17,6 +17,7 @@ MTF sizing will be a second view.
 
 from __future__ import annotations
 
+import time
 from functools import partial
 from typing import ClassVar
 
@@ -32,6 +33,7 @@ from swingdash.domain.risk.checks import Severity
 from swingdash.domain.risk.portfolio import Position
 from swingdash.domain.risk.sizing import RiskMode, RiskSpec
 from swingdash.domain.risk.stops import RiskInputError, StopMethod
+from swingdash.services.dhan_sync import SyncStatus
 from swingdash.services.risk import PortfolioView, PositionRow, SizedTrade, SymbolInfo
 from swingdash.services.risk_settings import RiskSettings
 from swingdash.ui.export import ExportTable
@@ -40,6 +42,8 @@ from swingdash.ui.tabs.risk.format import grouped, inr, signed_inr
 from swingdash.ui.tabs.risk.modals import (
     CloseForm,
     ClosePositionModal,
+    DhanConnectModal,
+    DhanLogin,
     PositionForm,
     PositionModal,
     RiskSettingsModal,
@@ -74,6 +78,7 @@ class RiskTab(TabBase):
         Binding("C", "close_position", "Close"),
         Binding("D", "delete_position", "Delete"),
         Binding("h", "toggle_closed", "Open/closed"),
+        Binding("B", "sync_broker", "Dhan sync"),
     ]
 
     def __init__(self) -> None:
@@ -121,6 +126,7 @@ class RiskTab(TabBase):
                     with Horizontal(classes="risk-row risk-buttons"):
                         yield Button("Take trade  ^t", variant="primary", id="risk-take")
                         yield Button("Settings  S", id="risk-settings")
+                        yield Button("Dhan  B", id="risk-dhan")
                 yield Static(id="risk-result")
             yield Static(id="risk-table-title")
             yield NavTable(id="risk-positions", cursor_type="row", zebra_stripes=True)
@@ -149,11 +155,14 @@ class RiskTab(TabBase):
         self._symbol.suggester = SuggestFromList(risk.symbols(), case_sensitive=False)
         self._apply_risk_settings(risk.settings)
         self._symbol.focus()
+        self._auto_sync_checked = float("-inf")
 
     def refresh_view(self) -> None:
         risk = self.services.risk
         self._event_log.extend(risk.events())
+        self._event_log.extend(self.services.dhan.events())
         del self._event_log[:-3]
+        self._maybe_auto_sync()
         view = risk.portfolio()
         self._portfolio = view
         self._summary.update(self._summary_text(view))
@@ -223,6 +232,8 @@ class RiskTab(TabBase):
             self.action_take_trade()
         elif event.button.id == "risk-settings":
             self.action_settings()
+        elif event.button.id == "risk-dhan":
+            self._open_dhan_connect()
 
     def _recalc(self) -> None:
         risk = self.services.risk
@@ -441,6 +452,46 @@ class RiskTab(TabBase):
             self.services.risk.delete_position(position_id)
             self._safe_refresh()
 
+    def action_sync_broker(self) -> None:
+        dhan = self.services.dhan
+        status = dhan.status
+        if not status.connected or status.needs_token:
+            self._open_dhan_connect()
+        elif status.running:
+            self.app.notify("A Dhan sync is already running.", severity="warning")
+        elif dhan.sync():
+            self.app.notify("Syncing from Dhan...")
+        self._safe_refresh()
+
+    def _open_dhan_connect(self) -> None:
+        dhan = self.services.dhan
+        status = dhan.status
+        self.app.push_screen(
+            DhanConnectModal(dhan.client_id(), _dhan_line(status).plain, status.connected),
+            self._dhan_login,
+        )
+
+    def _dhan_login(self, login: DhanLogin | None) -> None:
+        if login is None:
+            return
+        dhan = self.services.dhan
+        if login.access_token:
+            dhan.connect(login.client_id, login.access_token)
+            self.app.notify("Connecting to Dhan and syncing...")
+        elif dhan.sync():
+            self.app.notify("Syncing from Dhan...")
+        self._safe_refresh()
+
+    def _maybe_auto_sync(self) -> None:
+        # The first look each day syncs by itself; checked at most once a minute.
+        now = time.monotonic()
+        if now - self._auto_sync_checked < 60:
+            return
+        self._auto_sync_checked = now
+        dhan = self.services.dhan
+        if dhan.status.connected and dhan.sync_if_due():
+            self._event_log.append("syncing from Dhan...")
+
     def action_toggle_closed(self) -> None:
         self._showing_closed = not self._showing_closed
         self._safe_refresh()
@@ -536,10 +587,19 @@ class RiskTab(TabBase):
         ratio = summary.heat_pct / summary.heat_limit_pct if summary.heat_limit_pct else 1
         heat_style = "green" if ratio < 0.5 else "yellow" if ratio < 1 else "bold red"
         text.append(f"{summary.heat_pct:.1f}%", style=heat_style)
+        if summary.assumed_heat > 0:
+            # Part of the heat is measured to assumed stops (no SL, or SL already hit).
+            text.append(f" ({summary.assumed_heat_pct:.1f}% assumed)", style="yellow")
         text.append(
             f" of {summary.heat_limit_pct:g}% ({inr(summary.heat)}, {inr(summary.heat_left)} left)"
         )
         text.append(f"  ·  free {inr(summary.free_capital)}  ·  {summary.open_count} open")
+        if summary.open_count:
+            change = summary.current_value - summary.capital_used
+            text.append(
+                f"  ·  invested {inr(summary.capital_used)} now {inr(summary.current_value)} "
+            )
+            text.append(signed_inr(change), style="green" if change >= 0 else "red")
         text.append(f"  ·  {settings.charges.name} charges", style="grey62")
         return text
 
@@ -556,7 +616,15 @@ class RiskTab(TabBase):
             text.append("   h: open positions", style="grey50")
         else:
             text.append(f"Open positions ({len(view.open)})", style="bold")
-            text.append("   m edit/trail stop · C close · D delete · h closed", style="grey50")
+            breaches = view.summary.breaches
+            if breaches:
+                counts = " · ".join(f"{n} {breach.value}" for breach, n in breaches.items())
+                text.append(f"   Not followed: {counts}", style="bold red")
+            elif view.open:
+                text.append("   all following the plan", style="green")
+            text.append("   m stop · C close · D delete · h closed", style="grey50")
+        text.append("   ")
+        text.append_text(_dhan_line(self.services.dhan.status))
         return text
 
     def _status_text(self) -> Text:
@@ -564,9 +632,26 @@ class RiskTab(TabBase):
             "LTP: live tick, else latest quote; dimmed = last daily close (no quote yet).  ",
             style="grey50",
         )
+        mismatches = self.services.dhan.status.mismatches
+        if mismatches:
+            text.append(f"Dhan: {len(mismatches)} to check - {mismatches[0]}  ", style="yellow")
         if self._event_log:
             text.append(" | ".join(self._event_log[-2:]), style="yellow")
         return text
+
+
+def _dhan_line(status: SyncStatus) -> Text:
+    if not status.connected:
+        return Text("Dhan: not connected (B)", style="grey50")
+    if status.running:
+        return Text(f"Dhan: {status.phase or 'syncing'}...", style="cyan")
+    if status.needs_token:
+        return Text("Dhan token expired - press B to paste a new one", style="bold red")
+    if status.error:
+        return Text(status.error, style="red")
+    if status.last_sync is None:
+        return Text("Dhan: connected, not synced yet (B)", style="yellow")
+    return Text(f"Dhan synced {status.last_sync:%d %b %H:%M} (B)", style="grey62")
 
 
 def _number(raw: str) -> float | None:

@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import csv
+import datetime as dt
 from dataclasses import replace
 
 import pytest
-from textual.widgets import Input, RadioButton, RadioSet
+from textual.widgets import Input, Label, RadioButton, RadioSet
 
+from swingdash.domain.broker import BrokerHolding, BrokerTrade, Side
+from swingdash.domain.calendar import IST
 from swingdash.domain.risk.sizing import RiskMode, RiskSpec
 from swingdash.domain.risk.stops import StopMethod
 from swingdash.services.container import Services
 from swingdash.ui.app import SwingDashApp
-from swingdash.ui.tabs.risk.modals import ClosePositionModal, PositionModal, RiskSettingsModal
+from swingdash.ui.tabs.risk.modals import (
+    ClosePositionModal,
+    DhanConnectModal,
+    PositionModal,
+    RiskSettingsModal,
+)
 from swingdash.ui.tabs.risk.pane import RiskTab
 from swingdash.ui.watchlist.confirm_modal import ConfirmModal
 from swingdash.ui.widgets.nav_table import NavTable
@@ -267,3 +275,118 @@ async def test_quote_price_is_labelled(services: Services, quotes):
         app.query_one("#risk-symbol", Input).value = "RAYMOND"
         await until(pilot, lambda: "301.25 LTP at" in _text(app, "risk-quote"))
         await until(pilot, lambda: app.query_one("#risk-entry", Input).value == "301.25")
+
+
+# --- Dhan -------------------------------------------------------------------------
+
+
+def _dhan_fill(n: int, side, symbol: str, qty: int, price: float, day: dt.date):
+    return BrokerTrade(
+        f"O{n}-T",
+        symbol,
+        None,
+        side,
+        "CNC",
+        qty,
+        price,
+        dt.datetime.combine(day, dt.time(11), tzinfo=IST),
+    )
+
+
+def _script_dhan(broker) -> None:
+    broker.history = [
+        _dhan_fill(1, Side.BUY, "RAYMOND", 200, 290, dt.date(2026, 9, 1)),
+        _dhan_fill(2, Side.BUY, "SBIN", 300, 60, dt.date(2026, 8, 20)),
+        _dhan_fill(3, Side.SELL, "SBIN", 300, 64, dt.date(2026, 9, 4)),
+    ]
+    broker.holdings_list = [BrokerHolding("RAYMOND", None, 200, 290)]
+
+
+async def test_dhan_connect_sync_and_fix_a_missing_stop(services: Services, broker):
+    _with_capital(services)
+    _script_dhan(broker)
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(170, 45)) as pilot:
+        await _open(app, pilot)
+        assert "Dhan: not connected" in _text(app, "risk-table-title")
+        _table(app).focus()
+        await pilot.press("B")
+        await until(pilot, lambda: isinstance(app.screen, DhanConnectModal))
+        token = app.screen.query_one("#access-token", Input)
+        assert token.password  # masked
+        app.screen.query_one("#client-id", Input).value = "1000000000"
+        token.value = "pasted-token"
+        await pilot.click("#confirm")
+        await until(pilot, lambda: _table(app).row_count == 1)
+
+        row = _rows(app)[0]
+        assert row[:3] == ["D", "RAYMOND", "200"]
+        assert row[4] == "none" and row[9].startswith("~₹")  # no stop, assumed risk
+        assert row[12] == "no SL"
+        assert "Not followed: 1 no SL" in _text(app, "risk-table-title")
+        assert "Dhan synced" in _text(app, "risk-table-title")
+        assert services.dhan.client_id() == "1000000000"
+
+        # Set a stop: quantity, entry and date are Dhan's and can't be edited.
+        _table(app).focus()
+        await pilot.press("m")
+        await until(pilot, lambda: isinstance(app.screen, PositionModal))
+        assert app.screen.query_one("#quantity", Input).disabled
+        app.screen.query_one("#stop", Input).value = "280"
+        await pilot.click("#confirm")
+        await until(pilot, lambda: _rows(app)[0][12] == "ok")
+        assert "all following the plan" in _text(app, "risk-table-title")
+
+        # Exits come from Dhan, not the close dialog.
+        await pilot.press("C")
+        await pilot.pause()
+        assert not isinstance(app.screen, ClosePositionModal)
+
+        await pilot.press("h")
+        await until(pilot, lambda: _table(app).row_count == 1)
+        closed = _rows(app)[0]
+        assert closed[:2] == ["D", "SBIN"] and closed[4] == "64.00"
+
+
+async def test_hiding_a_dhan_row_and_an_expired_token(services: Services, broker):
+    _with_capital(services)
+    _script_dhan(broker)
+    services.dhan.connect("1000000000", "token")
+    services.dhan.wait(5)
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(170, 45)) as pilot:
+        await _open(app, pilot)
+        await until(pilot, lambda: _table(app).row_count == 1)
+        _table(app).focus()
+        await pilot.press("D")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmModal))
+        assert "syncs won't bring it back" in str(app.screen.query_one(Label).render())
+        await pilot.click("#confirm")
+        await until(pilot, lambda: _table(app).row_count == 0)
+
+        broker.rejected = True
+        await pilot.press("B")
+        await until(pilot, lambda: "token expired" in _text(app, "risk-table-title"))
+        assert _table(app).row_count == 0  # still hidden, nothing re-imported
+        await pilot.press("B")  # now asks for a new token
+        await until(pilot, lambda: isinstance(app.screen, DhanConnectModal))
+        await pilot.press("S", "m", "q")  # typed into the dialog, not shortcuts
+        assert isinstance(app.screen, DhanConnectModal)
+
+
+async def test_settings_for_assumed_stops(services: Services):
+    _with_capital(services)
+    app = SwingDashApp(services, services.watchlists.get("default"))
+    async with app.run_test(size=(150, 50)) as pilot:
+        await _open(app, pilot)
+        await pilot.click("#risk-settings")
+        await until(pilot, lambda: isinstance(app.screen, RiskSettingsModal))
+        _choose(app, "assumed-method", 1)
+        app.screen.query_one("#assumed-pct", Input).value = "6"
+        app.screen.query_one("#history-days", Input).value = "180"
+        await pilot.pause(0.3)
+        await pilot.click("#confirm")
+        await until(pilot, lambda: not isinstance(app.screen, RiskSettingsModal))
+        settings = services.risk.settings
+        assert (settings.assumed_stop_use_atr, settings.assumed_stop_pct) == (False, 6)
+        assert settings.broker_history_days == 180

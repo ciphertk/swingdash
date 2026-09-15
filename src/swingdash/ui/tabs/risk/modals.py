@@ -6,7 +6,7 @@ import datetime as dt
 from dataclasses import dataclass
 
 from textual.app import ComposeResult
-from textual.containers import Grid, Horizontal, Vertical
+from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, RadioButton, RadioSet
 
@@ -203,6 +203,8 @@ class RiskSettingsModal(_FormModal[RiskSettings]):
         _DIALOG_CSS.format(name="RiskSettingsModal")
         + """
     RiskSettingsModal RadioSet { layout: horizontal; height: 3; border: none; }
+    RiskSettingsModal #dialog { max-height: 95%; }
+    RiskSettingsModal VerticalScroll { height: auto; max-height: 34; }
     """
     )
 
@@ -214,7 +216,7 @@ class RiskSettingsModal(_FormModal[RiskSettings]):
         s = self._settings
         with Vertical(id="dialog"):
             yield Label("Risk settings - used for every trade you size")
-            with Grid():
+            with VerticalScroll(), Grid():
                 yield Label("Capital (₹)")
                 yield Input(f"{s.capital:.0f}" if s.capital else "", type="number", id="capital")
                 yield Label("Broker (for charges)")
@@ -241,6 +243,14 @@ class RiskSettingsModal(_FormModal[RiskSettings]):
                 yield Input(str(s.low_sessions), type="integer", id="low-sessions")
                 yield Label("Liquidity warning %")
                 yield Input(f"{s.liquidity_warn_pct:g}", type="number", id="liquidity")
+                yield Label("No stop-loss: assume")
+                with RadioSet(id="assumed-method"):
+                    yield RadioButton("ATR multiple", s.assumed_stop_use_atr)
+                    yield RadioButton("% below price", not s.assumed_stop_use_atr)
+                yield Label("Assumed stop %")
+                yield Input(f"{s.assumed_stop_pct:g}", type="number", id="assumed-pct")
+                yield Label("Broker history (days)")
+                yield Input(str(s.broker_history_days), type="integer", id="history-days")
             yield Label("", id="form-error")
             with Horizontal(id="buttons"):
                 yield Button("Cancel", id="cancel")
@@ -254,7 +264,8 @@ class RiskSettingsModal(_FormModal[RiskSettings]):
         broker = list(Broker)[max(0, self.query_one("#broker", RadioSet).pressed_index)]
         allocation = self._number("allocation", "Max position %")
         heat = self._number("heat", "Max heat %")
-        if allocation > 100 or heat > 100:
+        assumed_pct = self._number("assumed-pct", "Assumed stop %")
+        if allocation > 100 or heat > 100 or assumed_pct >= 100:
             raise ValueError("Percentages can't be above 100.")
         return RiskSettings(
             capital=self._number("capital", "Capital"),
@@ -268,4 +279,67 @@ class RiskSettingsModal(_FormModal[RiskSettings]):
             low_sessions=self._integer("low-sessions", "Recent low days"),
             liquidity_warn_pct=self._number("liquidity", "Liquidity %"),
             broker=broker,
+            assumed_stop_use_atr=self.query_one("#assumed-method", RadioSet).pressed_index != 1,
+            assumed_stop_pct=assumed_pct,
+            broker_history_days=self._integer("history-days", "Broker history days"),
         )
+
+
+@dataclass(frozen=True)
+class DhanLogin:
+    client_id: str
+    access_token: str  # "" keeps the stored token
+
+
+class DhanConnectModal(_FormModal[DhanLogin]):
+    """Paste a Dhan access token. The token field is masked and never pre-filled."""
+
+    CSS = (
+        _DIALOG_CSS.format(name="DhanConnectModal")
+        + """
+    DhanConnectModal #dialog { width: 76; }
+    """
+    )
+
+    def __init__(self, client_id: str, status: str, connected: bool) -> None:
+        super().__init__()
+        self._client_id = client_id
+        self._status = status
+        self._connected = connected
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Label("Connect Dhan - read-only: swingdash never places orders")
+            yield Label(
+                "Get a token at web.dhan.co > My Profile > Access DhanHQ APIs > Access Token.\n"
+                "It lasts 24 hours; swingdash renews it while you keep using it.\n"
+                "It's stored in your user folder (like the Upstox token), never shown again."
+            )
+            yield Label(self._status)
+            with Grid():
+                yield Label("Client ID")
+                yield Input(self._client_id, placeholder="e.g. 1000000000", id="client-id")
+                yield Label("Access token")
+                yield Input(
+                    password=True,
+                    placeholder="leave blank to keep the current one" if self._connected else "",
+                    id="access-token",
+                )
+            yield Label("", id="form-error")
+            with Horizontal(id="buttons"):
+                yield Button("Cancel", id="cancel")
+                yield Button(
+                    "Sync" if self._connected else "Connect", variant="primary", id="confirm"
+                )
+
+    def on_mount(self) -> None:
+        self.query_one("#access-token" if self._client_id else "#client-id", Input).focus()
+
+    def collect(self) -> DhanLogin:
+        client_id = self.query_one("#client-id", Input).value.strip()
+        token = self.query_one("#access-token", Input).value.strip()
+        if not client_id:
+            raise ValueError("Enter your Dhan client ID.")
+        if not token and not self._connected:
+            raise ValueError("Paste the access token from web.dhan.co.")
+        return DhanLogin(client_id, token)
