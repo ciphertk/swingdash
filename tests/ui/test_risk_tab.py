@@ -7,7 +7,7 @@ import datetime as dt
 from dataclasses import replace
 
 import pytest
-from textual.widgets import Input, Label, RadioButton, RadioSet
+from textual.widgets import Checkbox, Input, RadioButton, RadioSet
 
 from swingdash.domain.broker import BrokerHolding, BrokerTrade, Side
 from swingdash.domain.calendar import IST
@@ -17,8 +17,9 @@ from swingdash.services.container import Services
 from swingdash.ui.app import SwingDashApp
 from swingdash.ui.tabs.risk.modals import (
     ClosePositionModal,
-    DhanConnectModal,
+    DhanSyncModal,
     PositionModal,
+    RemoveImportedModal,
     RiskSettingsModal,
 )
 from swingdash.ui.tabs.risk.pane import RiskTab
@@ -311,11 +312,13 @@ async def test_dhan_connect_sync_and_fix_a_missing_stop(services: Services, brok
         assert "Dhan: not connected" in _text(app, "risk-table-title")
         _table(app).focus()
         await pilot.press("B")
-        await until(pilot, lambda: isinstance(app.screen, DhanConnectModal))
+        await until(pilot, lambda: isinstance(app.screen, DhanSyncModal))
         token = app.screen.query_one("#access-token", Input)
         assert token.password  # masked
         app.screen.query_one("#client-id", Input).value = "1000000000"
         token.value = "pasted-token"
+        assert app.screen.query_one("#history-from", Input).value == "13-09-2025"
+        app.screen.query_one("#history-from", Input).value = "01-01-2024"
         await pilot.click("#confirm")
         await until(pilot, lambda: _table(app).row_count == 1)
 
@@ -326,6 +329,7 @@ async def test_dhan_connect_sync_and_fix_a_missing_stop(services: Services, brok
         assert "Not followed: 1 no SL" in _text(app, "risk-table-title")
         assert "Dhan synced" in _text(app, "risk-table-title")
         assert services.dhan.client_id() == "1000000000"
+        assert broker.history_ranges[0][0] == dt.date(2024, 1, 1)
 
         # Set a stop: quantity, entry and date are Dhan's and can't be edited.
         _table(app).focus()
@@ -359,19 +363,28 @@ async def test_hiding_a_dhan_row_and_an_expired_token(services: Services, broker
         await until(pilot, lambda: _table(app).row_count == 1)
         _table(app).focus()
         await pilot.press("D")
-        await until(pilot, lambda: isinstance(app.screen, ConfirmModal))
-        assert "syncs won't bring it back" in str(app.screen.query_one(Label).render())
-        await pilot.click("#confirm")
+        await until(pilot, lambda: isinstance(app.screen, RemoveImportedModal))
+        await pilot.click("#hide")
         await until(pilot, lambda: _table(app).row_count == 0)
 
+        # A sync with the token rejected: nothing comes back, and B asks for a new one.
         broker.rejected = True
-        await pilot.press("B")
+        assert services.dhan.sync()
+        services.dhan.wait(5)
         await until(pilot, lambda: "token expired" in _text(app, "risk-table-title"))
-        assert _table(app).row_count == 0  # still hidden, nothing re-imported
-        await pilot.press("B")  # now asks for a new token
-        await until(pilot, lambda: isinstance(app.screen, DhanConnectModal))
+        _table(app).focus()
+        await pilot.press("B")
+        await until(pilot, lambda: isinstance(app.screen, DhanSyncModal))
+        assert "paste it here" in app.screen.query_one("#access-token", Input).placeholder
         await pilot.press("S", "m", "q")  # typed into the dialog, not shortcuts
-        assert isinstance(app.screen, DhanConnectModal)
+        assert isinstance(app.screen, DhanSyncModal)
+
+        # Paste a new token and bring the hidden row back.
+        broker.rejected = False
+        app.screen.query_one("#access-token", Input).value = "new-token"
+        app.screen.query_one("#restore-hidden", Checkbox).value = True
+        await pilot.click("#confirm")
+        await until(pilot, lambda: _table(app).row_count == 1)
 
 
 async def test_settings_for_assumed_stops(services: Services):

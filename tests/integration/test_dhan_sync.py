@@ -234,15 +234,29 @@ def test_a_sized_plan_links_to_the_dhan_buy_and_shows_oversizing(harness: Harnes
     assert Breach.OVERSIZED in row.risk.breaches
 
 
-def test_hidden_rows_stay_hidden(harness: Harness):
+def test_removed_rows_come_back_and_hidden_ones_on_request(harness: Harness):
     broker = harness.broker
     broker.history = [_fill(Side.BUY, "TCS", 4, 3000.0, dt.date(2026, 9, 2))]
     broker.holdings_list = [BrokerHolding("TCS", STOCKS["TCS"], 4, 3000.0)]
     _connect(harness)
+
+    # Removed by mistake: the next sync brings it back.
     (position,) = harness.risk.positions()
     harness.risk.delete_position(position.id)
     _run(harness)
-    assert harness.risk.positions() == []
+    assert [p.symbol for p in harness.risk.positions()] == ["TCS"]
+
+    # Hidden: syncs skip it...
+    (position,) = harness.risk.positions()
+    harness.risk.delete_position(position.id, hide=True)
+    _run(harness)
+    assert harness.risk.positions() == [] and harness.sync.hidden_count() == 1
+
+    # ...until hidden rows are brought back.
+    assert harness.sync.sync(restore_hidden=True)
+    harness.sync.wait(5)
+    assert [p.symbol for p in harness.risk.positions()] == ["TCS"]
+    assert harness.sync.hidden_count() == 0
 
 
 def test_a_token_close_to_expiry_is_renewed_and_saved(harness: Harness):
@@ -287,3 +301,57 @@ def test_unknown_instruments_are_reported_not_imported(harness: Harness):
     _connect(harness)
     assert harness.risk.positions() == []
     assert any("INE000UNKNOWN" in m for m in harness.sync.status.mismatches)
+
+
+def test_the_user_picks_how_far_back_to_sync(harness: Harness):
+    broker = harness.broker
+    broker.history = [
+        _fill(Side.BUY, "HFCL", 10, 90.0, dt.date(2024, 11, 5)),
+        _fill(Side.SELL, "HFCL", 10, 99.0, dt.date(2024, 12, 20)),
+        _fill(Side.BUY, "TCS", 4, 3000.0, dt.date(2026, 9, 2)),
+    ]
+    broker.holdings_list = [BrokerHolding("TCS", STOCKS["TCS"], 4, 3000.0)]
+
+    # The default (30 days in these settings) misses the 2024 trade.
+    _connect(harness)
+    assert harness.sync.history_from() == dt.date(2026, 8, 16)
+    assert harness.risk.portfolio().closed == ()
+
+    # An earlier start reads only the stretch not read before.
+    assert harness.sync.sync(dt.date(2024, 1, 1))
+    harness.sync.wait(5)
+    assert broker.history_ranges[-1] == (dt.date(2024, 1, 1), dt.date(2026, 8, 15))
+    assert [p.symbol for p in harness.risk.portfolio().closed] == ["HFCL"]
+    assert harness.sync.history_from() == dt.date(2024, 1, 1)
+
+    # A later start leaves older trades out without reading anything again.
+    calls = len(broker.history_ranges)
+    assert harness.sync.sync(dt.date(2025, 1, 1))
+    harness.sync.wait(5)
+    assert len(broker.history_ranges) == calls
+    assert harness.risk.portfolio().closed == ()
+    assert [row.position.symbol for row in harness.risk.portfolio().open] == ["TCS"]
+
+
+def test_a_future_start_date_is_refused(harness: Harness):
+    _connect(harness)
+    with pytest.raises(ValueError, match="before today"):
+        harness.sync.sync(TODAY)
+
+
+def test_stops_follow_an_open_position_whose_history_grows(harness: Harness):
+    broker = harness.broker
+    # Held since before the default window: the first sync sees only holdings.
+    broker.history = [_fill(Side.BUY, "TCS", 4, 2800.0, dt.date(2026, 6, 1))]
+    broker.holdings_list = [BrokerHolding("TCS", STOCKS["TCS"], 4, 2800.0)]
+    _connect(harness)
+    (position,) = harness.risk.positions()
+    assert "held before" in position.note
+    harness.risk.update_position(position.id, quantity=4, entry=2800.0, stop=2600.0, note="")
+
+    # Reaching back far enough finds the buy - a new ref, same position, same stop.
+    assert harness.sync.sync(dt.date(2026, 1, 1))
+    harness.sync.wait(5)
+    (moved,) = harness.risk.positions()
+    assert moved.id == position.id and moved.stop == 2600.0
+    assert moved.opened_on == dt.date(2026, 6, 1)

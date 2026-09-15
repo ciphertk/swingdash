@@ -220,6 +220,15 @@ CREATE TABLE IF NOT EXISTS broker_ignored (
 );
 """
 
+# Dhan fills are now identified by order, time, quantity and price (history
+# sends exchangeTradeId "0" for every fill). Stored fills and the read-through
+# marker are cleared so the next sync reads them again with the new ids;
+# imported positions keep their stops and notes (carried over by symbol).
+_V8_DHAN_FILL_IDS = """
+DELETE FROM broker_trades WHERE broker = 'dhan';
+DELETE FROM app_state WHERE key IN ('dhan_history_through', 'dhan_history_covered_from');
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, _V1_BASELINE_SCHEMA),
     (2, _V2_APP_STATE),
@@ -228,6 +237,7 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (5, _V5_CHARTINK_COLUMNS),
     (6, _V6_POSITIONS),
     (7, _V7_BROKER_POSITIONS),
+    (8, _V8_DHAN_FILL_IDS),
 )
 LATEST_VERSION = MIGRATIONS[-1][0]
 

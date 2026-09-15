@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from textual.app import ComposeResult
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, RadioButton, RadioSet
+from textual.widgets import Button, Checkbox, Input, Label, RadioButton, RadioSet
 
 from swingdash.domain.risk.charges import Broker
 from swingdash.domain.risk.sizing import RiskMode
@@ -286,60 +286,138 @@ class RiskSettingsModal(_FormModal[RiskSettings]):
 
 
 @dataclass(frozen=True)
-class DhanLogin:
+class DhanSyncRequest:
     client_id: str
     access_token: str  # "" keeps the stored token
+    history_from: dt.date
+    restore_hidden: bool
 
 
-class DhanConnectModal(_FormModal[DhanLogin]):
-    """Paste a Dhan access token. The token field is masked and never pre-filled."""
+class DhanSyncModal(_FormModal[DhanSyncRequest]):
+    """
+    Sync from Dhan: the account (client ID, and a token when one is needed -
+    masked, never pre-filled), the date to build positions from, and whether
+    to bring back hidden rows.
+    """
 
     CSS = (
-        _DIALOG_CSS.format(name="DhanConnectModal")
+        _DIALOG_CSS.format(name="DhanSyncModal")
         + """
-    DhanConnectModal #dialog { width: 76; }
+    DhanSyncModal #dialog { width: 80; }
+    DhanSyncModal Checkbox { margin-top: 1; }
     """
     )
 
-    def __init__(self, client_id: str, status: str, connected: bool) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        status: str,
+        *,
+        needs_token: bool,
+        history_from: dt.date,
+        hidden: int,
+    ) -> None:
         super().__init__()
         self._client_id = client_id
         self._status = status
-        self._connected = connected
+        self._needs_token = needs_token
+        self._history_from = history_from
+        self._hidden = hidden
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Label("Connect Dhan - read-only: swingdash never places orders")
-            yield Label(
-                "Get a token at web.dhan.co > My Profile > Access DhanHQ APIs > Access Token.\n"
-                "It lasts 24 hours; swingdash renews it while you keep using it.\n"
-                "It's stored in your user folder (like the Upstox token), never shown again."
-            )
+            yield Label("Sync from Dhan - read-only: swingdash never places orders")
             yield Label(self._status)
+            if self._needs_token:
+                yield Label(
+                    "Get a token at web.dhan.co > My Profile > Access DhanHQ APIs > Access Token.\n"
+                    "It lasts 24 hours; swingdash renews it while you keep using it.\n"
+                    "It's stored in your user folder (like the Upstox token), never shown again."
+                )
             with Grid():
                 yield Label("Client ID")
                 yield Input(self._client_id, placeholder="e.g. 1000000000", id="client-id")
                 yield Label("Access token")
                 yield Input(
                     password=True,
-                    placeholder="leave blank to keep the current one" if self._connected else "",
+                    placeholder="paste it here"
+                    if self._needs_token
+                    else "blank keeps the current one",
                     id="access-token",
                 )
+                yield Label("Sync trades from")
+                yield Input(
+                    date_input(self._history_from), placeholder="DD-MM-YYYY", id="history-from"
+                )
+            if self._hidden:
+                yield Checkbox(f"Bring back {self._hidden} hidden position(s)", id="restore-hidden")
             yield Label("", id="form-error")
             with Horizontal(id="buttons"):
                 yield Button("Cancel", id="cancel")
-                yield Button(
-                    "Sync" if self._connected else "Connect", variant="primary", id="confirm"
-                )
+                yield Button("Sync", variant="primary", id="confirm")
 
     def on_mount(self) -> None:
-        self.query_one("#access-token" if self._client_id else "#client-id", Input).focus()
+        if not self._client_id:
+            target = "#client-id"
+        elif self._needs_token:
+            target = "#access-token"
+        else:
+            target = "#history-from"
+        self.query_one(target, Input).focus()
 
-    def collect(self) -> DhanLogin:
+    def collect(self) -> DhanSyncRequest:
         client_id = self.query_one("#client-id", Input).value.strip()
         token = self.query_one("#access-token", Input).value.strip()
         if not client_id:
             raise ValueError("Enter your Dhan client ID.")
-        if not token and not self._connected:
+        if not token and self._needs_token:
             raise ValueError("Paste the access token from web.dhan.co.")
-        return DhanLogin(client_id, token)
+        restore = self.query("#restore-hidden")
+        return DhanSyncRequest(
+            client_id=client_id,
+            access_token=token,
+            history_from=self._date("history-from"),
+            restore_hidden=bool(restore) and self.query_one("#restore-hidden", Checkbox).value,
+        )
+
+
+class RemoveImportedModal(ModalScreen[str | None]):
+    """Remove an imported row until the next sync, or hide it from syncs for good."""
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    CSS = """
+    RemoveImportedModal { align: center middle; }
+    RemoveImportedModal #dialog {
+        width: 70; height: auto; padding: 1 2;
+        background: $surface; border: thick $error;
+    }
+    RemoveImportedModal #buttons { height: auto; align-horizontal: right; margin-top: 1; }
+    RemoveImportedModal #buttons Button { margin-left: 1; }
+    """
+
+    def __init__(self, symbol: str, source: str) -> None:
+        super().__init__()
+        self._symbol = symbol
+        self._source = source
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Label(
+                f"Remove {self._symbol}? It stays in {self._source}.\n"
+                "Remove: it comes back on the next sync.\n"
+                "Hide: syncs skip it until you bring hidden positions back (B)."
+            )
+            with Horizontal(id="buttons"):
+                yield Button("Cancel", id="cancel")
+                yield Button("Remove", variant="warning", id="remove")
+                yield Button("Hide for good", variant="error", id="hide")
+
+    def on_mount(self) -> None:
+        self.query_one("#cancel", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id if event.button.id in ("remove", "hide") else None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)

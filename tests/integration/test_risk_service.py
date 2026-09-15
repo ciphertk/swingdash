@@ -363,6 +363,6 @@ def test_imported_positions_edit_only_their_stop_and_hide_on_delete(harness: Har
     refreshed = service.positions()[0]
     assert (refreshed.quantity, refreshed.stop, refreshed.note) == (120, 470, "gap fill")
 
-    service.delete_position(position_id)
+    service.delete_position(position_id, hide=True)
     assert service.positions() == []
     assert repo.ignored("dhan") == {"RAYMOND:normal:open:T1"}

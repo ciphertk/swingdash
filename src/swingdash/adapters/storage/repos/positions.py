@@ -184,6 +184,11 @@ class PositionRepository:
                 "INSERT OR IGNORE INTO broker_ignored (broker, ref) VALUES (?, ?)", (source, ref)
             )
 
+    def unignore_all(self, source: str) -> int:
+        """Let every hidden import come back on the next sync. Returns how many were hidden."""
+        with self._db.transaction() as conn:
+            return conn.execute("DELETE FROM broker_ignored WHERE broker = ?", (source,)).rowcount
+
     def ignored(self, source: str) -> set[str]:
         rows = (
             self._db.connection()

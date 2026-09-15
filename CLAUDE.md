@@ -291,7 +291,10 @@ live account** - check shapes on the first real sync and update this.
   Tokens are JWTs - `exp` gives the expiry when the API doesn't.
 - Trade history rows have `tradingSymbol: null` (name in `customSymbol`) -
   map by `isin` (`InstrumentService.find_symbol_by_isin`). The trade book has
-  a symbol but no ISIN. Fill id = `orderId-exchangeTradeId` (same in both).
+  a symbol but no ISIN. **Verified on a real account: history sends
+  `exchangeTradeId: "0"` for every fill**, so a fill's id is
+  `orderId|exchangeTime|qty|price` (`parsers.fill_id`) - the same from the
+  trade book and history, and partial fills of one order stay apart.
   Times are IST without an offset; "NA" means none; charges are itemised on
   history rows (brokerage, stt, stamp, exchange, sebi, service tax).
 - Holdings `totalQty` = delivered + T1 (today's fills aren't in it yet);
@@ -299,7 +302,12 @@ live account** - check shapes on the first real sync and update this.
   CNC -> normal, MTF -> mtf, intraday ignored; holdings explain shares older
   than the history; refs are `SYMBOL:funding:open:<first trade id>` /
   `...:closed:<episode>:<sell day>`. Dhan owns qty/prices/dates/charges; the
-  user's stop/plan/note survive; hidden refs live in `broker_ignored`.
+  user's stop/plan/note survive (and move to the new row when an open
+  position's ref changes). The user picks the start date (`dhan_history_from`);
+  only unread stretches are fetched (`dhan_history_covered_from` ..
+  `dhan_history_through`), and fills before the start are ignored. Deleting
+  an imported row removes it until the next sync; `hide=True` adds it to
+  `broker_ignored`, cleared by "bring back hidden" (`unignore_all`).
 
 ## RVOL (the metric in production)
 

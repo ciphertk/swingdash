@@ -188,7 +188,7 @@ Things to know:
 | `C` | close it at an exit price and exit date (it moves to closed positions) |
 | `D` | delete it (a mistake, not an exit) |
 | `h` | switch the table between open and closed positions |
-| `B` (or the Dhan button) | sync positions from your Dhan account (connects first if needed) |
+| `B` (or the Dhan button) | sync from your Dhan account: pick the start date, paste a token when needed, bring back hidden rows |
 | `Tab` | move between the form, the buttons and the table |
 
 Type a symbol and the form sizes the trade as you go. The entry fills in
@@ -238,8 +238,11 @@ no static IP (that's only for placing orders - swingdash never does).
    stored in your user folder like the Upstox token, never shown again, and
    swingdash **renews it** while you keep using the app - open it at least
    once a day and you won't need to paste a new one.
-3. The sync reads your trade history (the first time, `Broker history
-   (days)` back - 365 by default), today's trades and your holdings, then
+3. Pick **Sync trades from** (default: a year back, or the date you used
+   last). Choosing an earlier date later - to bring in 2024 trades, say -
+   reads only the stretch not read before; a later date leaves older trades
+   out (your holdings still account for shares bought before it). The sync
+   reads that trade history, today's trades and your holdings, then
    builds positions: open ones from the shares you still hold, and a closed
    one for each day you sold, matching buys and sells first-in-first-out.
    Your stops and notes on imported rows are kept across syncs; quantity,
@@ -248,7 +251,9 @@ no static IP (that's only for placing orders - swingdash never does).
    quantity shows as oversized.
 
 The first look at the tab each day syncs by itself; `B` syncs any time.
-Deleting an imported row hides it for good. If something can't be matched
+`D` on an imported row asks: **Remove** (it comes back on the next sync) or
+**Hide for good** (syncs skip it - tick "Bring back hidden positions" in the
+`B` dialog to restore). If something can't be matched
 (a stock that isn't in the NSE list, or quantities the history can't explain),
 the status line says so rather than guessing.
 

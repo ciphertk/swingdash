@@ -42,10 +42,11 @@ from swingdash.ui.tabs.risk.format import grouped, inr, signed_inr
 from swingdash.ui.tabs.risk.modals import (
     CloseForm,
     ClosePositionModal,
-    DhanConnectModal,
-    DhanLogin,
+    DhanSyncModal,
+    DhanSyncRequest,
     PositionForm,
     PositionModal,
+    RemoveImportedModal,
     RiskSettingsModal,
 )
 from swingdash.ui.tabs.risk.positions import CLOSED_COLUMNS, OPEN_COLUMNS
@@ -233,7 +234,7 @@ class RiskTab(TabBase):
         elif event.button.id == "risk-settings":
             self.action_settings()
         elif event.button.id == "risk-dhan":
-            self._open_dhan_connect()
+            self.action_sync_broker()
 
     def _recalc(self) -> None:
         risk = self.services.risk
@@ -435,15 +436,17 @@ class RiskTab(TabBase):
         if position is None:
             self.app.notify("Select a position first.", severity="warning")
             return
-        message = (
-            f"Hide {position.symbol} from swingdash?\n"
-            f"It stays in {position.source.title()}; syncs won't bring it back."
-            if position.is_imported
-            else f"Delete {position.symbol}?\n"
-            "This removes it entirely - to record an exit, close it (C)."
-        )
+        if position.is_imported:
+            self.app.push_screen(
+                RemoveImportedModal(position.symbol, position.source.title()),
+                partial(self._imported_removed, position.id),
+            )
+            return
         self.app.push_screen(
-            ConfirmModal(message),
+            ConfirmModal(
+                f"Delete {position.symbol}?\n"
+                "This removes it entirely - to record an exit, close it (C)."
+            ),
             partial(self._position_deleted, position.id),
         )
 
@@ -452,34 +455,54 @@ class RiskTab(TabBase):
             self.services.risk.delete_position(position_id)
             self._safe_refresh()
 
-    def action_sync_broker(self) -> None:
-        dhan = self.services.dhan
-        status = dhan.status
-        if not status.connected or status.needs_token:
-            self._open_dhan_connect()
-        elif status.running:
-            self.app.notify("A Dhan sync is already running.", severity="warning")
-        elif dhan.sync():
-            self.app.notify("Syncing from Dhan...")
+    def _imported_removed(self, position_id: int, choice: str | None) -> None:
+        if choice is None:
+            return
+        self.services.risk.delete_position(position_id, hide=choice == "hide")
+        if choice == "hide":
+            self.app.notify("Hidden - press B and tick 'Bring back' to restore it.")
         self._safe_refresh()
 
-    def _open_dhan_connect(self) -> None:
+    def action_sync_broker(self) -> None:
+        dhan = self.services.dhan
+        if dhan.status.running:
+            self.app.notify("A Dhan sync is already running.", severity="warning")
+            return
+        self._open_dhan_sync()
+
+    def _open_dhan_sync(self) -> None:
         dhan = self.services.dhan
         status = dhan.status
         self.app.push_screen(
-            DhanConnectModal(dhan.client_id(), _dhan_line(status).plain, status.connected),
-            self._dhan_login,
+            DhanSyncModal(
+                dhan.client_id(),
+                _dhan_line(status).plain,
+                needs_token=not status.connected or status.needs_token,
+                history_from=dhan.history_from(),
+                hidden=dhan.hidden_count(),
+            ),
+            self._dhan_sync_requested,
         )
 
-    def _dhan_login(self, login: DhanLogin | None) -> None:
-        if login is None:
+    def _dhan_sync_requested(self, request: DhanSyncRequest | None) -> None:
+        if request is None:
             return
         dhan = self.services.dhan
-        if login.access_token:
-            dhan.connect(login.client_id, login.access_token)
-            self.app.notify("Connecting to Dhan and syncing...")
-        elif dhan.sync():
-            self.app.notify("Syncing from Dhan...")
+        try:
+            if request.access_token:
+                started = dhan.connect(
+                    request.client_id,
+                    request.access_token,
+                    request.history_from,
+                    restore_hidden=request.restore_hidden,
+                )
+            else:
+                started = dhan.sync(request.history_from, restore_hidden=request.restore_hidden)
+        except ValueError as exc:
+            self.app.notify(str(exc), severity="error")
+            return
+        if started:
+            self.app.notify(f"Syncing Dhan trades since {request.history_from:%d %b %Y}...")
         self._safe_refresh()
 
     def _maybe_auto_sync(self) -> None:

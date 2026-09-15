@@ -381,10 +381,13 @@ class RiskService:
         self._repo.close(position_id, exit_price, closed_on)
         self._changed()
 
-    def delete_position(self, position_id: int) -> None:
-        """An imported position is also remembered as ignored, so syncs don't bring it back."""
+    def delete_position(self, position_id: int, *, hide: bool = False) -> None:
+        """
+        A removed imported position comes back on the next sync. `hide`: keep
+        it out of syncs too (until hidden rows are brought back).
+        """
         position = self._repo.get(position_id)
-        if position is not None and position.is_imported and position.broker_ref:
+        if hide and position is not None and position.is_imported and position.broker_ref:
             self._repo.ignore(position.source, position.broker_ref)
         self._repo.delete(position_id)
         self._changed()

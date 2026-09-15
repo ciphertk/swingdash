@@ -160,3 +160,28 @@ def test_v6_positions_survive_v7_with_their_plan(tmp_path: Path):
         assert {"broker_trades", "broker_ignored"} <= tables
     finally:
         db.close()
+
+
+def test_v8_clears_dhan_fills_for_reading_again(tmp_path: Path):
+    path = tmp_path / "v7.db"
+    db = Database(path)
+    try:
+        conn = db.connection()
+        for number, sql in MIGRATIONS:
+            if number <= 7:
+                conn.executescript(sql)
+        conn.execute(
+            "INSERT INTO broker_trades (broker, trade_id, symbol, side, product, quantity,"
+            " price, traded_at) VALUES ('dhan', '1-0', '', 'BUY', 'CNC', 1, 1, '2026-09-01')"
+        )
+        conn.execute("INSERT INTO app_state VALUES ('dhan_history_through', '2026-09-14')")
+        conn.execute("INSERT INTO app_state VALUES ('dhan_history_from', '2025-09-15')")
+        conn.execute("PRAGMA user_version = 7")
+        conn.commit()
+
+        assert migrate(db) == LATEST_VERSION
+        assert conn.execute("SELECT COUNT(*) FROM broker_trades").fetchone()[0] == 0
+        keys = {row[0] for row in conn.execute("SELECT key FROM app_state")}
+        assert keys == {"dhan_history_from"}  # the chosen start stays
+    finally:
+        db.close()

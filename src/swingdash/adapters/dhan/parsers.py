@@ -84,25 +84,32 @@ def parse_trades(payload: Any) -> list[BrokerTrade]:
         time = _time(record.get("exchangeTime")) or _time(record.get("updateTime"))
         if side not in {"BUY", "SELL"} or quantity <= 0 or time is None:
             continue
-        order_id = _text(record.get("orderId"))
-        trade_id = _text(record.get("exchangeTradeId"))
+        price = _float(record.get("tradedPrice"))
         trades.append(
             BrokerTrade(
-                # Order + exchange trade id: the same fill in the trade book
-                # today and in the history tomorrow gets the same id.
-                trade_id=f"{order_id}-{trade_id}",
+                trade_id=fill_id(_text(record.get("orderId")), time, quantity, price),
                 symbol=_text(record.get("tradingSymbol")),
                 isin=_optional_text(record.get("isin")),
                 side=Side(side),
                 product=_text(record.get("productType")).upper(),
                 quantity=quantity,
-                price=_float(record.get("tradedPrice")),
+                price=price,
                 time=time,
                 charges=sum(_float(record.get(name)) for name in _CHARGE_FIELDS),
                 security_id=_optional_text(record.get("securityId")),
             )
         )
     return trades
+
+
+def fill_id(order_id: str, time: dt.datetime, quantity: int, price: float) -> str:
+    """
+    A fill's identity: its order, exchange time, quantity and price. Not
+    `exchangeTradeId` - trade history sends "0" for every fill (verified on a
+    real account, Sep 2026), which would merge an order's partial fills, and
+    the trade book may send the real one, which wouldn't match history's.
+    """
+    return f"{order_id}|{time:%Y-%m-%dT%H:%M:%S}|{quantity}|{price:.4f}"
 
 
 def parse_account(payload: Any, token: str) -> BrokerAccount:

@@ -61,7 +61,8 @@ def test_positions_keep_only_equity_segments():
 
 def test_trade_book_fill():
     (trade,) = parsers.parse_trades(_json("trade_book.json"))
-    assert trade.trade_id == "112111182045-15112111182938"
+    # Order, time, quantity and price - history sends exchangeTradeId "0" for every fill.
+    assert trade.trade_id == "112111182045|2026-09-15T10:12:31|10|700.5000"
     assert (trade.symbol, trade.side, trade.product, trade.quantity, trade.price) == (
         "TATAMOTORS",
         Side.BUY,
@@ -254,3 +255,11 @@ def test_renewal_sends_the_client_id():
     source = DhanSource(lambda: CREDENTIALS, http=http)  # type: ignore[arg-type]
     assert source.renew_token().valid_until is not None
     assert calls == [{"dhanClientId": "1000000000"}]
+
+
+def test_partial_fills_of_one_order_stay_apart():
+    history = _json("trade_history_page0.json")
+    first = dict(history[0], exchangeTradeId="0")
+    second = dict(first, exchangeTime="2026-09-09 11:02:50", tradedQuantity=3)
+    ids = {t.trade_id for t in parsers.parse_trades([first, second])}
+    assert len(ids) == 2
