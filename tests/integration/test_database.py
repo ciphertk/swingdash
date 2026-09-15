@@ -45,6 +45,7 @@ def test_fresh_database_migrates_to_latest(db: Database):
         "app_state",
         "ref_bands",
         "chartink_items",
+        "positions",
     } <= tables
 
 

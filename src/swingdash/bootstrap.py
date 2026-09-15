@@ -19,6 +19,7 @@ from swingdash.adapters.storage.repos.baselines import BaselineRepository
 from swingdash.adapters.storage.repos.candles import CandleRepository
 from swingdash.adapters.storage.repos.chartink import ChartinkRepository
 from swingdash.adapters.storage.repos.fundamentals import FundamentalsRepository
+from swingdash.adapters.storage.repos.positions import PositionRepository
 from swingdash.adapters.storage.repos.securities import SecuritiesRepository
 from swingdash.adapters.storage.repos.sessions import SessionRepository
 from swingdash.adapters.storage.repos.watchlists import WatchlistRepository
@@ -47,6 +48,8 @@ from swingdash.services.ports import (
     SecuritiesSource,
 )
 from swingdash.services.preferences import PreferencesService
+from swingdash.services.risk import RiskService
+from swingdash.services.risk_settings import RiskSettingsService
 from swingdash.services.rvol.baselines import BaselineService
 from swingdash.services.securities import SecuritiesService
 from swingdash.services.watchlists import WatchlistService
@@ -107,6 +110,8 @@ def build_services(
         isin_lookup=instruments.find_isin,
     )
 
+    hub = MarketDataHub(feed_factory or upstox_feed)
+
     return Services(
         settings=settings,
         db=db,
@@ -117,7 +122,7 @@ def build_services(
         candles=candles,
         fundamentals=fundamentals,
         baselines=BaselineService(history, BaselineRepository(db), calendar),
-        hub=MarketDataHub(feed_factory or upstox_feed),
+        hub=hub,
         securities=securities,
         preferences=PreferencesService(AppStateRepository(db), settings.mswing_index_key),
         chartink=ChartinkService(
@@ -127,5 +132,14 @@ def build_services(
             securities=securities,
             candles=candles,
             calendar=calendar,
+        ),
+        risk=RiskService(
+            PositionRepository(db),
+            RiskSettingsService(AppStateRepository(db)),
+            instruments=instruments,
+            candles=candles,
+            securities=securities,
+            calendar=calendar,
+            hub=hub,
         ),
     )

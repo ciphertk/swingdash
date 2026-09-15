@@ -3,7 +3,9 @@
 from swingdash.adapters.upstox.instruments import parse_instrument_masters
 
 
-def _row(symbol: str, series: str, segment: str = "NSE_EQ") -> dict[str, str]:
+def _row(
+    symbol: str, series: str, segment: str = "NSE_EQ", lot_size: int = 1
+) -> dict[str, str | int]:
     return {
         "segment": segment,
         "instrument_type": series,
@@ -11,6 +13,7 @@ def _row(symbol: str, series: str, segment: str = "NSE_EQ") -> dict[str, str]:
         "instrument_key": f"{segment}|{symbol}",
         "name": symbol.title(),
         "isin": f"INE{symbol}",
+        "lot_size": lot_size,
     }
 
 
@@ -23,7 +26,7 @@ def test_every_equity_series_is_kept():
             _row("HFCL", "BE"),
             _row("MTARTECH", "BE"),
             _row("HDIL", "BZ"),
-            _row("APRAMEYA", "SM"),
+            _row("APRAMEYA", "SM", lot_size=600),
             _row("KCK", "ST"),
         ]
     )
@@ -40,7 +43,10 @@ def test_every_equity_series_is_kept():
         "trading_symbol": "HFCL",
         "name": "Hfcl",
         "isin": "INEHFCL",
+        "series": "BE",
+        "lot_size": "1",
     }
+    assert masters.equities[4]["lot_size"] == "600"  # an SME lot
 
 
 def test_bonds_reits_invits_and_other_segments_are_not_stocks():

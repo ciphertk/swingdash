@@ -26,6 +26,7 @@ class InstrumentService:
         self._indices: list[dict[str, str]] | None = None
         self._symbol_to_key: dict[str, str] = {}
         self._symbol_to_isin: dict[str, str] = {}
+        self._by_symbol: dict[str, dict[str, str]] = {}
 
     def available(self) -> bool:
         return self._equities_path.is_file()
@@ -39,6 +40,18 @@ class InstrumentService:
         """The Fundamentals API is keyed by ISIN, not instrument key."""
         self._ensure_loaded()
         return self._symbol_to_isin.get(trading_symbol.strip().upper())
+
+    def find_series(self, trading_symbol: str) -> str | None:
+        """NSE series (EQ, BE, SM, ...); None if unknown or cached before series were kept."""
+        self._ensure_loaded()
+        equity = self._by_symbol.get(trading_symbol.strip().upper())
+        return (equity or {}).get("series") or None
+
+    def lot_size(self, trading_symbol: str) -> int:
+        """Shares per tradable lot - more than 1 only for SME stocks."""
+        self._ensure_loaded()
+        raw = (self._by_symbol.get(trading_symbol.strip().upper()) or {}).get("lot_size", "1")
+        return int(raw) if str(raw).isdigit() and int(raw) > 0 else 1
 
     def list_equities(self) -> list[dict[str, str]]:
         self._ensure_loaded()
@@ -87,6 +100,7 @@ class InstrumentService:
             self._symbol_to_isin = {
                 e["trading_symbol"]: e["isin"] for e in equities if e.get("isin")
             }
+            self._by_symbol = {e["trading_symbol"]: e for e in equities}
             self._indices = indices
             self._equities = equities
 

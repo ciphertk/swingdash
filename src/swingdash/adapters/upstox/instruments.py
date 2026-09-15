@@ -38,6 +38,9 @@ def parse_instrument_masters(instruments: list[dict[str, Any]]) -> InstrumentMas
             "trading_symbol": inst["trading_symbol"],
             "name": inst.get("name", ""),
             "isin": inst.get("isin", ""),
+            "series": str(inst.get("instrument_type") or ""),
+            # SME stocks trade in lots; everything else in single shares.
+            "lot_size": str(inst.get("lot_size") or 1),
         }
         for inst in instruments
         if inst.get("segment") == "NSE_EQ" and inst.get("instrument_type") in EQUITY_SERIES

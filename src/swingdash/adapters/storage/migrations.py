@@ -146,12 +146,32 @@ _V5_CHARTINK_COLUMNS = """
 ALTER TABLE chartink_items ADD COLUMN columns_json TEXT;
 """
 
+# Positions entered in the Risk tab (the Analytics Token can't read holdings).
+# `funding` is "normal" (delivery) today; MTF positions will add their own.
+_V6_POSITIONS = """
+CREATE TABLE IF NOT EXISTS positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    instrument_key TEXT,
+    quantity INTEGER NOT NULL,
+    entry REAL NOT NULL,
+    stop REAL NOT NULL,
+    initial_stop REAL NOT NULL,
+    opened_on TEXT NOT NULL,
+    funding TEXT NOT NULL DEFAULT 'normal',
+    note TEXT NOT NULL DEFAULT '',
+    closed_on TEXT,
+    exit_price REAL
+);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, _V1_BASELINE_SCHEMA),
     (2, _V2_APP_STATE),
     (3, _V3_SECURITIES),
     (4, _V4_CHARTINK),
     (5, _V5_CHARTINK_COLUMNS),
+    (6, _V6_POSITIONS),
 )
 LATEST_VERSION = MIGRATIONS[-1][0]
 
